@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, Upload, FileIcon, Trash2 } from 'lucide-react';
-import { createCustomGPT, updateCustomGPT } from '@/lib/chat';
+import { createCustomGPT, updateCustomGPT, saveGPTFile, fetchGPTFiles, deleteGPTFile, readTextFile } from '@/lib/chat';
 import { supabase } from '@/lib/supabase';
 import { useChatStore } from '@/stores/chatStore';
-import { CustomGPT } from '@/types';
+import { CustomGPT, CustomGPTFile } from '@/types';
 import { toast } from 'sonner';
 
 interface GPTBuilderModalProps {
@@ -16,7 +16,7 @@ interface GPTBuilderModalProps {
 export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuilderModalProps) {
   const { addCustomGPT, updateCustomGPT: updateGPTInStore } = useChatStore();
   const [loading, setLoading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; url: string; size: number }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<CustomGPTFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
@@ -28,6 +28,24 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
     isPublic: editingGPT?.is_public || false,
   });
 
+  useEffect(() => {
+    if (isOpen && editingGPT) {
+      loadExistingFiles();
+    } else {
+      setUploadedFiles([]);
+    }
+  }, [isOpen, editingGPT]);
+
+  const loadExistingFiles = async () => {
+    if (!editingGPT) return;
+    try {
+      const files = await fetchGPTFiles(editingGPT.id);
+      setUploadedFiles(files);
+    } catch (error) {
+      console.error('파일 로드 실패:', error);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -36,7 +54,7 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
 
     setLoading(true);
     try {
-      const uploaded = [];
+      const uploaded: CustomGPTFile[] = [];
       for (const file of Array.from(files)) {
         const filePath = `${userId}/${Date.now()}_${file.name}`;
         const { data, error } = await supabase.storage
@@ -49,10 +67,23 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
           .from('chat-files')
           .getPublicUrl(data.path);
 
+        // txt 파일인 경우 내용 읽기
+        let fileContent: string | undefined;
+        if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+          fileContent = await file.text();
+        }
+
+        // 임시 객체 (GPT 생성 후 DB에 저장)
         uploaded.push({
-          name: file.name,
-          url: publicUrl,
-          size: file.size,
+          id: crypto.randomUUID(), // 임시 ID
+          custom_gpt_id: '', // 나중에 설정
+          file_name: file.name,
+          file_url: publicUrl,
+          file_path: data.path,
+          file_size: file.size,
+          mime_type: file.type,
+          file_content: fileContent,
+          created_at: new Date().toISOString(),
         });
       }
       setUploadedFiles([...uploadedFiles, ...uploaded]);
@@ -66,7 +97,21 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
     }
   };
 
-  const handleRemoveFile = (index: number) => {
+  const handleRemoveFile = async (index: number) => {
+    const file = uploadedFiles[index];
+    
+    // DB에 저장된 파일인 경우 삭제
+    if (file.custom_gpt_id && editingGPT) {
+      try {
+        await deleteGPTFile(file.id);
+        await supabase.storage.from('chat-files').remove([file.file_path]);
+      } catch (error) {
+        console.error('파일 삭제 실패:', error);
+        toast.error('파일 삭제에 실패했습니다');
+        return;
+      }
+    }
+    
     setUploadedFiles(uploadedFiles.filter((_, i) => i !== index));
   };
 
@@ -83,6 +128,8 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
     setLoading(true);
 
     try {
+      let gptId: string;
+      
       if (editingGPT) {
         // 수정 모드
         const updated = await updateCustomGPT(editingGPT.id, {
@@ -94,6 +141,23 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
           is_public: formData.isPublic,
         });
         updateGPTInStore(editingGPT.id, updated);
+        gptId = editingGPT.id;
+        
+        // 새로 업로드된 파일들 저장 (custom_gpt_id가 없는 파일들)
+        for (const file of uploadedFiles) {
+          if (!file.custom_gpt_id) {
+            await saveGPTFile(
+              gptId,
+              file.file_name,
+              file.file_url,
+              file.file_path,
+              file.file_size,
+              file.mime_type,
+              file.file_content
+            );
+          }
+        }
+        
         toast.success('커스텀 GPT가 수정되었습니다!');
       } else {
         // 생성 모드
@@ -107,8 +171,24 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
           formData.isPublic
         );
         addCustomGPT(newGPT);
+        gptId = newGPT.id;
+        
+        // 업로드된 파일들 DB에 저장
+        for (const file of uploadedFiles) {
+          await saveGPTFile(
+            gptId,
+            file.file_name,
+            file.file_url,
+            file.file_path,
+            file.file_size,
+            file.mime_type,
+            file.file_content
+          );
+        }
+        
         toast.success('커스텀 GPT가 생성되었습니다!');
       }
+      
       onClose();
     } catch (error) {
       console.error('GPT 저장 실패:', error);
@@ -241,8 +321,8 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
                   >
                     <FileIcon className="w-5 h-5 text-blue-400 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm truncate">{file.name}</p>
-                      <p className="text-white/50 text-xs">{formatFileSize(file.size)}</p>
+                      <p className="text-white text-sm truncate">{file.file_name}</p>
+                      <p className="text-white/50 text-xs">{formatFileSize(file.file_size)}</p>
                     </div>
                     <button
                       type="button"

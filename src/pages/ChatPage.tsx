@@ -7,7 +7,7 @@ import { useMessages } from '@/hooks/useMessages';
 import { ChatMessage } from '@/components/chat/ChatMessage';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { EmptyState } from '@/components/chat/EmptyState';
-import { createConversation, saveMessage, updateConversationTitle, streamChat } from '@/lib/chat';
+import { createConversation, saveMessage, updateConversationTitle, streamChat, fetchGPTFiles } from '@/lib/chat';
 import { toast } from 'sonner';
 
 export function ChatPage() {
@@ -18,6 +18,7 @@ export function ChatPage() {
     streamingMessage,
     isStreaming,
     currentGPT,
+    currentGPTFiles,
     conversations,
     setCurrentConversation,
     addMessage,
@@ -25,6 +26,7 @@ export function ChatPage() {
     setIsStreaming,
     addConversation,
     updateConversation,
+    setCurrentGPTFiles,
   } = useChatStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -32,6 +34,25 @@ export function ChatPage() {
   useConversations(user?.id);
   useCustomGPTs(user?.id);
   useMessages(currentConversationId);
+
+  // 커스텀 GPT 변경 시 파일 로드
+  useEffect(() => {
+    if (currentGPT) {
+      loadGPTFiles();
+    } else {
+      setCurrentGPTFiles([]);
+    }
+  }, [currentGPT]);
+
+  const loadGPTFiles = async () => {
+    if (!currentGPT) return;
+    try {
+      const files = await fetchGPTFiles(currentGPT.id);
+      setCurrentGPTFiles(files);
+    } catch (error) {
+      console.error('GPT 파일 로드 실패:', error);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -79,7 +100,7 @@ export function ChatPage() {
       setStreamingMessage('');
 
       const chatMessages = [...messages, userMessage];
-      const stream = await streamChat(chatMessages, systemPrompt, instructions);
+      const stream = await streamChat(chatMessages, systemPrompt, instructions, currentGPTFiles);
       const reader = stream.getReader();
       const decoder = new TextDecoder();
 

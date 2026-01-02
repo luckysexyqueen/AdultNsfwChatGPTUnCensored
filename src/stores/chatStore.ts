@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Conversation, Message, CustomGPT } from '@/types';
+import { Conversation, Message, CustomGPT, CustomGPTFile } from '@/types';
 
 interface ChatState {
   conversations: Conversation[];
@@ -9,6 +9,7 @@ interface ChatState {
   isStreaming: boolean;
   customGPTs: CustomGPT[];
   currentGPT: CustomGPT | null;
+  currentGPTFiles: CustomGPTFile[];
   setConversations: (conversations: Conversation[]) => void;
   setCurrentConversation: (id: string | null) => void;
   setMessages: (messages: Message[]) => void;
@@ -23,6 +24,7 @@ interface ChatState {
   updateCustomGPT: (id: string, updates: Partial<CustomGPT>) => void;
   deleteCustomGPT: (id: string) => void;
   setCurrentGPT: (gpt: CustomGPT | null) => void;
+  setCurrentGPTFiles: (files: CustomGPTFile[]) => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -33,6 +35,7 @@ export const useChatStore = create<ChatState>((set) => ({
   isStreaming: false,
   customGPTs: [],
   currentGPT: null,
+  currentGPTFiles: [],
   setConversations: (conversations) => set({ conversations }),
   setCurrentConversation: (id) => set({ currentConversationId: id }),
   setMessages: (messages) => set({ messages }),
@@ -57,4 +60,5 @@ export const useChatStore = create<ChatState>((set) => ({
     customGPTs: state.customGPTs.filter(g => g.id !== id)
   })),
   setCurrentGPT: (gpt) => set({ currentGPT: gpt }),
+  setCurrentGPTFiles: (files) => set({ currentGPTFiles: files }),
 }));

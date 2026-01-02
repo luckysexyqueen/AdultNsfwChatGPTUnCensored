@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Message, CustomGPT } from '@/types';
+import { Message, CustomGPT, CustomGPTFile } from '@/types';
 
 export async function createConversation(
   userId: string,
@@ -56,7 +56,8 @@ export async function deleteConversation(conversationId: string) {
 export async function streamChat(
   messages: Message[],
   systemPrompt?: string,
-  instructions?: string
+  instructions?: string,
+  gptFiles?: CustomGPTFile[]
 ): Promise<ReadableStream> {
   const authToken = (await supabase.auth.getSession()).data.session?.access_token;
 
@@ -72,6 +73,7 @@ export async function streamChat(
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
         systemPrompt,
         instructions,
+        gptFiles: gptFiles || [],
       }),
     }
   );
@@ -156,4 +158,62 @@ export async function fetchCustomGPT(gptId: string): Promise<CustomGPT | null> {
     throw error;
   }
   return data;
+}
+
+// ========== 커스텀 GPT 파일 관리 ==========
+
+export async function saveGPTFile(
+  gptId: string,
+  fileName: string,
+  fileUrl: string,
+  filePath: string,
+  fileSize: number,
+  mimeType?: string,
+  fileContent?: string
+): Promise<CustomGPTFile> {
+  const { data, error } = await supabase
+    .from('custom_gpt_files')
+    .insert({
+      custom_gpt_id: gptId,
+      file_name: fileName,
+      file_url: fileUrl,
+      file_path: filePath,
+      file_size: fileSize,
+      mime_type: mimeType,
+      file_content: fileContent,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchGPTFiles(gptId: string): Promise<CustomGPTFile[]> {
+  const { data, error } = await supabase
+    .from('custom_gpt_files')
+    .select('*')
+    .eq('custom_gpt_id', gptId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function deleteGPTFile(fileId: string): Promise<void> {
+  const { error } = await supabase
+    .from('custom_gpt_files')
+    .delete()
+    .eq('id', fileId);
+
+  if (error) throw error;
+}
+
+export async function readTextFile(filePath: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from('chat-files')
+    .download(filePath);
+
+  if (error) throw error;
+  return await data.text();
 }

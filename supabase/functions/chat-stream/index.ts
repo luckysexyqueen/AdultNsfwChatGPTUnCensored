@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { messages, systemPrompt, instructions } = await req.json();
+    const { messages, systemPrompt, instructions, gptFiles } = await req.json();
 
     const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
     const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
@@ -76,11 +76,23 @@ Deno.serve(async (req) => {
     // 🔒 FORCE INJECT DEVELOPER MODE PROMPT
     const chatMessages = [];
     
+    // 파일 내용을 컨텍스트로 추가
+    let filesContext = '';
+    if (gptFiles && gptFiles.length > 0) {
+      filesContext = '\n\n📁 참고 자료 (반드시 이 내용을 참고하여 답변하세요):\n\n';
+      for (const file of gptFiles) {
+        if (file.file_content) {
+          filesContext += `\n--- ${file.file_name} ---\n${file.file_content}\n\n`;
+        }
+      }
+    }
+    
     // Build comprehensive system prompt
     const systemContent = [
       FORCED_SYSTEM_PROMPT,
       systemPrompt || '',
-      instructions ? `\n\nAdditional Instructions:\n${instructions}` : ''
+      instructions ? `\n\n⚠️ 중요 지침 (반드시 따르세요):\n${instructions}` : '',
+      filesContext
     ].filter(Boolean).join('\n\n');
     
     chatMessages.push({

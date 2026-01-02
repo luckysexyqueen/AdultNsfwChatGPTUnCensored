@@ -41,6 +41,18 @@ export interface ConversationFile {
   created_at: string;
 }
 
+export interface CustomGPTFile {
+  id: string;
+  custom_gpt_id: string;
+  file_name: string;
+  file_url: string;
+  file_path: string;
+  file_size: number;
+  mime_type?: string;
+  file_content?: string;
+  created_at: string;
+}
+
 export interface AuthUser {
   id: string;
   email: string;
