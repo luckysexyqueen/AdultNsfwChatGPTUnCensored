@@ -84,17 +84,23 @@ export function ChatPage() {
       const decoder = new TextDecoder();
 
       let fullResponse = '';
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        
+        // 마지막 라인은 불완전할 수 있으므로 버퍼에 유지
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
+          if (!line.trim()) continue;
+          
           if (line.startsWith('data: ')) {
-            const data = line.slice(6);
+            const data = line.slice(6).trim();
             if (data === '[DONE]') continue;
 
             try {
@@ -105,7 +111,7 @@ export function ChatPage() {
                 setStreamingMessage(fullResponse);
               }
             } catch (e) {
-              console.error('Failed to parse SSE data:', e);
+              // JSON 파싱 실패는 무시 (불완전한 청크)
             }
           }
         }

@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { X } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { X, Upload, FileIcon, Trash2 } from 'lucide-react';
 import { createCustomGPT, updateCustomGPT } from '@/lib/chat';
+import { supabase } from '@/lib/supabase';
 import { useChatStore } from '@/stores/chatStore';
 import { CustomGPT } from '@/types';
 import { toast } from 'sonner';
@@ -15,6 +16,8 @@ interface GPTBuilderModalProps {
 export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuilderModalProps) {
   const { addCustomGPT, updateCustomGPT: updateGPTInStore } = useChatStore();
   const [loading, setLoading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ name: string; url: string; size: number }>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     name: editingGPT?.name || '',
@@ -26,6 +29,54 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
   });
 
   if (!isOpen) return null;
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setLoading(true);
+    try {
+      const uploaded = [];
+      for (const file of Array.from(files)) {
+        const filePath = `${userId}/${Date.now()}_${file.name}`;
+        const { data, error } = await supabase.storage
+          .from('chat-files')
+          .upload(filePath, file);
+
+        if (error) throw error;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('chat-files')
+          .getPublicUrl(data.path);
+
+        uploaded.push({
+          name: file.name,
+          url: publicUrl,
+          size: file.size,
+        });
+      }
+      setUploadedFiles([...uploadedFiles, ...uploaded]);
+      toast.success(`${uploaded.length}개 파일 업로드 완료`);
+    } catch (error) {
+      console.error('파일 업로드 실패:', error);
+      toast.error('파일 업로드에 실패했습니다');
+    } finally {
+      setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setUploadedFiles(uploadedFiles.filter((_, i) => i !== index));
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,6 +201,60 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
               className="w-full bg-[#40414f] text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#10a37f]"
               placeholder="https://example.com/avatar.png"
             />
+          </div>
+
+          {/* 파일 업로드 */}
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              파일 첨부 (선택)
+              {uploadedFiles.length > 0 && (
+                <span className="ml-2 px-2 py-1 bg-green-500 text-white text-xs rounded">
+                  {uploadedFiles.length}
+                </span>
+              )}
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+              disabled={loading}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full bg-[#40414f] text-white rounded-lg px-4 py-8 border-2 border-dashed border-white/20 hover:border-white/40 transition-colors flex flex-col items-center gap-2"
+              disabled={loading}
+            >
+              <Upload className="w-6 h-6 text-white/60" />
+              <span className="text-white/80">파일을 클릭하여 업로드</span>
+              <span className="text-white/50 text-xs">모든 파일 형식 지원</span>
+            </button>
+            
+            {uploadedFiles.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {uploadedFiles.map((file, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-3 bg-[#40414f] p-3 rounded-lg"
+                  >
+                    <FileIcon className="w-5 h-5 text-blue-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm truncate">{file.name}</p>
+                      <p className="text-white/50 text-xs">{formatFileSize(file.size)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFile(index)}
+                      className="text-red-400 hover:text-red-300 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 공개 여부 */}

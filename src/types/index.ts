@@ -7,6 +7,7 @@ export interface Conversation {
   custom_gpt_id?: string;
   system_prompt?: string;
   instructions?: string;
+  messages?: Message[];
 }
 
 export interface Message {
