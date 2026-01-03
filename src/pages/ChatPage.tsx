@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '@/stores/chatStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useConversations } from '@/hooks/useConversations';
@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 
 export function ChatPage() {
   const { user } = useAuth();
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const {
     currentConversationId,
     messages,
@@ -34,6 +35,26 @@ export function ChatPage() {
   useConversations(user?.id);
   useCustomGPTs(user?.id);
   useMessages(currentConversationId);
+
+  // 온라인/오프라인 상태 감지
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast.success('인터넷에 연결되었습니다');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast.error('오프라인 상태입니다. 메시지 전송이 불가능합니다.');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // 커스텀 GPT 변경 시 파일 로드
   useEffect(() => {
@@ -65,6 +86,11 @@ export function ChatPage() {
   const handleSend = async (content: string) => {
     if (!user) {
       toast.error('로그인이 필요합니다');
+      return;
+    }
+
+    if (!isOnline) {
+      toast.error('오프라인 상태입니다. 인터넷 연결 후 다시 시도해주세요.');
       return;
     }
 
@@ -117,9 +143,33 @@ export function ChatPage() {
       let buffer = '';
 
       try {
+        let consecutiveErrors = 0;
+        const maxErrors = 5;
+
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // 버퍼에 남은 데이터 처리
+            if (buffer.trim()) {
+              const lines = buffer.split('\n');
+              for (const line of lines) {
+                if (!line.trim() || !line.startsWith('data: ')) continue;
+                const data = line.slice(6).trim();
+                if (data === '[DONE]') continue;
+                try {
+                  const parsed = JSON.parse(data);
+                  const content = parsed.choices?.[0]?.delta?.content;
+                  if (content) {
+                    fullResponse += content;
+                    setStreamingMessage(fullResponse);
+                  }
+                } catch (e) {
+                  console.debug('Final buffer parse error:', e);
+                }
+              }
+            }
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
@@ -140,17 +190,22 @@ export function ChatPage() {
                 if (content) {
                   fullResponse += content;
                   setStreamingMessage(fullResponse);
+                  consecutiveErrors = 0; // 성공하면 에러 카운트 리셋
                 }
               } catch (e) {
-                // JSON 파싱 실패는 무시 (불완전한 청크)
-                console.debug('JSON parse error (expected for incomplete chunks):', e);
+                consecutiveErrors++;
+                if (consecutiveErrors > maxErrors) {
+                  console.error('Too many consecutive parsing errors');
+                  throw new Error('응답 파싱 중 오류가 발생했습니다');
+                }
+                console.debug('JSON parse error (chunk might be incomplete):', e);
               }
             }
           }
         }
-      } catch (streamError) {
+      } catch (streamError: any) {
         console.error('Stream reading error:', streamError);
-        throw new Error('스트리밍 중 오류가 발생했습니다');
+        throw new Error(streamError.message || '스트리밍 중 오류가 발생했습니다');
       }
 
       // 응답 저장

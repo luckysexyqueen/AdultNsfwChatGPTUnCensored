@@ -60,6 +60,11 @@ export async function streamChat(
   gptFiles?: CustomGPTFile[]
 ): Promise<ReadableStream> {
   try {
+    // 온라인 상태 확인
+    if (!navigator.onLine) {
+      throw new Error('오프라인 상태입니다. 인터넷에 연결한 후 다시 시도해주세요.');
+    }
+
     const { data: { session } } = await supabase.auth.getSession();
     const authToken = session?.access_token;
 
