@@ -64,14 +64,53 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { messages, systemPrompt, instructions, gptFiles } = await req.json();
+    // 요청 본문 파싱
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (e) {
+      console.error('Request body parsing error:', e);
+      return new Response(
+        JSON.stringify({ error: '잘못된 요청 형식입니다' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const { messages, systemPrompt, instructions, gptFiles } = requestBody;
+
+    if (!messages || !Array.isArray(messages)) {
+      return new Response(
+        JSON.stringify({ error: '메시지가 필요합니다' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
 
     const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
     const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
 
     if (!baseUrl || !apiKey) {
-      throw new Error('Missing OnSpace AI configuration');
+      console.error('Missing OnSpace AI configuration');
+      return new Response(
+        JSON.stringify({ error: 'AI 서비스 설정이 누락되었습니다' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
+
+    console.log('Chat request:', {
+      messageCount: messages.length,
+      hasSystemPrompt: !!systemPrompt,
+      hasInstructions: !!instructions,
+      fileCount: gptFiles?.length || 0,
+    });
 
     // 🔒 FORCE INJECT DEVELOPER MODE PROMPT
     const chatMessages = [];
@@ -102,6 +141,7 @@ Deno.serve(async (req) => {
     
     chatMessages.push(...messages);
 
+    console.log('Calling OnSpace AI API...');
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -118,8 +158,27 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const error = await response.text();
-      throw new Error(`OnSpace AI API error: ${error}`);
+      console.error('OnSpace AI API error:', error);
+      return new Response(
+        JSON.stringify({ error: `AI API 오류: ${error}` }),
+        {
+          status: response.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
+
+    if (!response.body) {
+      return new Response(
+        JSON.stringify({ error: 'AI 응답 스트림이 없습니다' }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    console.log('Streaming response started');
 
     // SSE 스트림 반환
     const stream = new ReadableStream({
@@ -158,10 +217,13 @@ Deno.serve(async (req) => {
         'X-Accel-Buffering': 'no',
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Chat stream error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error?.message || '서버 오류가 발생했습니다',
+        details: error?.stack || undefined,
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

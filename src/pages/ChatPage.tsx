@@ -63,10 +63,15 @@ export function ChatPage() {
   }, [messages, streamingMessage]);
 
   const handleSend = async (content: string) => {
-    if (!user) return;
+    if (!user) {
+      toast.error('로그인이 필요합니다');
+      return;
+    }
+
+    let conversationId = currentConversationId;
+    let userMessageId: string | null = null;
 
     try {
-      let conversationId = currentConversationId;
       let systemPrompt = currentGPT?.system_prompt;
       let instructions = currentGPT?.instructions;
 
@@ -79,6 +84,7 @@ export function ChatPage() {
         }
       }
 
+      // 새 대화 생성
       if (!conversationId) {
         const title = content.slice(0, 50);
         const newConv = await createConversation(
@@ -93,9 +99,12 @@ export function ChatPage() {
         setCurrentConversation(conversationId);
       }
 
+      // 사용자 메시지 저장
       const userMessage = await saveMessage(conversationId, 'user', content);
+      userMessageId = userMessage.id;
       addMessage(userMessage);
 
+      // 스트리밍 시작
       setIsStreaming(true);
       setStreamingMessage('');
 
@@ -107,53 +116,66 @@ export function ChatPage() {
       let fullResponse = '';
       let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        
-        // 마지막 라인은 불완전할 수 있으므로 버퍼에 유지
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
           
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim();
-            if (data === '[DONE]') continue;
+          // 마지막 라인은 불완전할 수 있으므로 버퍼에 유지
+          buffer = lines.pop() || '';
 
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                fullResponse += content;
-                setStreamingMessage(fullResponse);
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim();
+              if (data === '[DONE]') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices?.[0]?.delta?.content;
+                if (content) {
+                  fullResponse += content;
+                  setStreamingMessage(fullResponse);
+                }
+              } catch (e) {
+                // JSON 파싱 실패는 무시 (불완전한 청크)
+                console.debug('JSON parse error (expected for incomplete chunks):', e);
               }
-            } catch (e) {
-              // JSON 파싱 실패는 무시 (불완전한 청크)
             }
           }
         }
+      } catch (streamError) {
+        console.error('Stream reading error:', streamError);
+        throw new Error('스트리밍 중 오류가 발생했습니다');
       }
 
-      if (fullResponse) {
+      // 응답 저장
+      if (fullResponse.trim()) {
         const assistantMessage = await saveMessage(conversationId, 'assistant', fullResponse);
         addMessage(assistantMessage);
 
+        // 첫 메시지인 경우 제목 업데이트
         if (messages.length === 0) {
           const title = content.slice(0, 50);
           await updateConversationTitle(conversationId, title);
           updateConversation(conversationId, { title });
         }
+      } else {
+        toast.error('AI 응답이 비어있습니다');
       }
 
       setStreamingMessage('');
       setIsStreaming(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to send message:', error);
-      toast.error('메시지 전송에 실패했습니다');
+      
+      const errorMessage = error?.message || '메시지 전송에 실패했습니다';
+      toast.error(errorMessage);
+      
       setIsStreaming(false);
       setStreamingMessage('');
     }

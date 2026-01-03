@@ -59,30 +59,54 @@ export async function streamChat(
   instructions?: string,
   gptFiles?: CustomGPTFile[]
 ): Promise<ReadableStream> {
-  const authToken = (await supabase.auth.getSession()).data.session?.access_token;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const authToken = session?.access_token;
 
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-stream`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: messages.map((m) => ({ role: m.role, content: m.content })),
-        systemPrompt,
-        instructions,
-        gptFiles: gptFiles || [],
-      }),
+    if (!authToken) {
+      throw new Error('인증 토큰이 없습니다. 다시 로그인해주세요.');
     }
-  );
 
-  if (!response.ok) {
-    throw new Error(`Failed to stream chat: ${response.statusText}`);
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-stream`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: messages.map((m) => ({ role: m.role, content: m.content })),
+          systemPrompt,
+          instructions,
+          gptFiles: gptFiles || [],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = `메시지 전송 실패 (${response.status})`;
+      
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    if (!response.body) {
+      throw new Error('응답 스트림이 없습니다');
+    }
+
+    return response.body;
+  } catch (error) {
+    console.error('streamChat error:', error);
+    throw error;
   }
-
-  return response.body!;
 }
 
 // ========== 커스텀 GPT 관리 ==========
