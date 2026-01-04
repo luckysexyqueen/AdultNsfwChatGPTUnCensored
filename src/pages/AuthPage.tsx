@@ -164,11 +164,11 @@ export function AuthPage() {
                 <>
                   <div className="space-y-2">
                     <Input
-                      placeholder="인증 코드 (6자리)"
+                      placeholder="인증 코드 (4자리)"
                       value={otp}
                       onChange={(e) => setOtp(e.target.value)}
                       disabled={loading}
-                      maxLength={6}
+                      maxLength={4}
                     />
                   </div>
                   <div className="space-y-2">

@@ -25,6 +25,7 @@ interface ChatState {
   deleteCustomGPT: (id: string) => void;
   setCurrentGPT: (gpt: CustomGPT | null) => void;
   setCurrentGPTFiles: (files: CustomGPTFile[]) => void;
+  reset: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
@@ -61,4 +62,14 @@ export const useChatStore = create<ChatState>((set) => ({
   })),
   setCurrentGPT: (gpt) => set({ currentGPT: gpt }),
   setCurrentGPTFiles: (files) => set({ currentGPTFiles: files }),
+  reset: () => set({
+    conversations: [],
+    currentConversationId: null,
+    messages: [],
+    streamingMessage: '',
+    isStreaming: false,
+    customGPTs: [],
+    currentGPT: null,
+    currentGPTFiles: [],
+  }),
 }));

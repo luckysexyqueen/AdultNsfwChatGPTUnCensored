@@ -60,6 +60,11 @@ export async function streamChat(
   instructions?: string,
   gptFiles?: CustomGPTFile[]
 ): Promise<ReadableStream> {
+  // 메시지 유효성 검사
+  if (!messages || messages.length === 0) {
+    throw new Error('메시지가 비어있습니다');
+  }
+
   // 자동 재시도가 적용된 fetch 함수
   const fetchWithRetry = async () => {
     // 온라인 상태 확인

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
+import { useChatStore } from '@/stores/chatStore';
 import { User } from '@supabase/supabase-js';
 import { AuthUser } from '@/types';
 
@@ -15,6 +16,7 @@ function mapSupabaseUser(user: User): AuthUser {
 
 export function useAuth() {
   const { user, loading, login, loginAsGuest, logout, setLoading } = useAuthStore();
+  const { reset: resetChat } = useChatStore();
 
   useEffect(() => {
     let mounted = true;
@@ -63,10 +65,19 @@ export function useAuth() {
 
   const handleLogout = async () => {
     const currentUser = user;
-    if (currentUser?.isGuest) {
-      logout();
-    } else {
-      await supabase.auth.signOut();
+    try {
+      // 채팅 상태 초기화
+      resetChat();
+      
+      if (currentUser?.isGuest) {
+        logout();
+      } else {
+        await supabase.auth.signOut();
+        logout();
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+      // 에러가 나도 로그아웃 처리
       logout();
     }
   };

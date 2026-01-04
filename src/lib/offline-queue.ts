@@ -54,6 +54,12 @@ class OfflineMessageQueue {
 
   // 메시지를 큐에 추가
   addToQueue(conversationId: string, content: string): string {
+    if (!conversationId || !content) {
+      console.error('[Queue] 유효하지 않은 메시지:', { conversationId, content });
+      toast.error('메시지를 큐에 추가할 수 없습니다');
+      return '';
+    }
+
     const messageId = `queued-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     const queuedMessage: QueuedMessage = {

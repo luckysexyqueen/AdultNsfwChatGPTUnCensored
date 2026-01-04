@@ -92,17 +92,22 @@ export function ChatPage() {
     }
 
     // 게스트 사용자는 로컬 데이터만 사용
-    const isGuest = user.isGuest;
+    const isGuest = user.isGuest === true;
 
     // 오프라인이면 큐에 추가
     if (!isOnline) {
-      const conversationId = currentConversationId || (await createConversation(user.id, content.slice(0, 50))).id;
-      messageQueue.addToQueue(conversationId, content);
+      if (!isGuest) {
+        const conversationId = currentConversationId || (await createConversation(user.id, content.slice(0, 50))).id;
+        messageQueue.addToQueue(conversationId, content);
+      } else {
+        toast.error('게스트 모드에서는 오프라인 전송이 지원되지 않습니다');
+      }
       return;
     }
 
     let conversationId = currentConversationId;
     let userMessageId: string | null = null;
+    let userMessageObj: any = null;
 
     try {
       let systemPrompt = currentGPT?.system_prompt;
@@ -155,27 +160,27 @@ export function ChatPage() {
       // 사용자 메시지 저장
       if (isGuest) {
         // 게스트: 로컬 메시지
-        const userMessage = {
+        userMessageObj = {
           id: `msg-${Date.now()}`,
           conversation_id: conversationId!,
           role: 'user' as const,
           content,
           created_at: new Date().toISOString(),
         };
-        userMessageId = userMessage.id;
-        addMessage(userMessage);
+        userMessageId = userMessageObj.id;
+        addMessage(userMessageObj);
       } else {
         // 일반 사용자: 서버에 저장
-        const userMessage = await withRetry(() => saveMessage(conversationId!, 'user', content));
-        userMessageId = userMessage.id;
-        addMessage(userMessage);
+        userMessageObj = await withRetry(() => saveMessage(conversationId!, 'user', content));
+        userMessageId = userMessageObj.id;
+        addMessage(userMessageObj);
       }
 
       // 스트리밍 시작
       setIsStreaming(true);
       setStreamingMessage('');
 
-      const chatMessages = [...messages, userMessage];
+      const chatMessages = [...messages, userMessageObj];
       const stream = await streamChat(chatMessages, systemPrompt, instructions, currentGPTFiles);
       const reader = stream.getReader();
       const decoder = new TextDecoder();
@@ -254,7 +259,7 @@ export function ChatPage() {
         if (isGuest) {
           // 게스트: 로컬 메시지
           const assistantMessage = {
-            id: `msg-${Date.now()}`,
+            id: `msg-${Date.now() + 1}`,
             conversation_id: conversationId!,
             role: 'assistant' as const,
             content: fullResponse,
@@ -270,7 +275,7 @@ export function ChatPage() {
         }
 
         // 첫 메시지인 경우 제목 업데이트
-        if (messages.length === 0) {
+        if (messages.length === 0 && userMessageObj) {
           const title = content.slice(0, 50);
           if (!isGuest) {
             await withRetry(() => updateConversationTitle(conversationId!, title));
