@@ -58,4 +58,5 @@ export interface AuthUser {
   email: string;
   username: string;
   avatar?: string;
+  isGuest?: boolean;
 }

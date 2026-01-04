@@ -87,9 +87,12 @@ export function ChatPage() {
 
   const handleSend = async (content: string) => {
     if (!user) {
-      toast.error('로그인이 필요합니다');
+      toast.error('게스트 모드로 먼저 시작하세요');
       return;
     }
+
+    // 게스트 사용자는 로컬 데이터만 사용
+    const isGuest = user.isGuest;
 
     // 오프라인이면 큐에 추가
     if (!isOnline) {
@@ -114,27 +117,59 @@ export function ChatPage() {
         }
       }
 
-      // 새 대화 생성 (자동 재시도 적용)
+      // 새 대화 생성 (게스트는 로컬만)
       if (!conversationId) {
         const title = content.slice(0, 50);
-        const newConv = await withRetry(() =>
-          createConversation(
-            user.id,
+        if (isGuest) {
+          // 게스트: 로컬 대화 생성
+          const newConv = {
+            id: `local-${Date.now()}`,
+            user_id: user.id,
             title,
-            currentGPT?.id,
-            systemPrompt,
-            instructions
-          )
-        );
-        conversationId = newConv.id;
-        addConversation(newConv);
-        setCurrentConversation(conversationId);
+            custom_gpt_id: currentGPT?.id || null,
+            system_prompt: systemPrompt || '',
+            instructions: instructions || '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          conversationId = newConv.id;
+          addConversation(newConv);
+          setCurrentConversation(conversationId);
+        } else {
+          // 일반 사용자: 서버에 저장
+          const newConv = await withRetry(() =>
+            createConversation(
+              user.id,
+              title,
+              currentGPT?.id,
+              systemPrompt,
+              instructions
+            )
+          );
+          conversationId = newConv.id;
+          addConversation(newConv);
+          setCurrentConversation(conversationId);
+        }
       }
 
-      // 사용자 메시지 저장 (자동 재시도 적용)
-      const userMessage = await withRetry(() => saveMessage(conversationId!, 'user', content));
-      userMessageId = userMessage.id;
-      addMessage(userMessage);
+      // 사용자 메시지 저장
+      if (isGuest) {
+        // 게스트: 로컬 메시지
+        const userMessage = {
+          id: `msg-${Date.now()}`,
+          conversation_id: conversationId!,
+          role: 'user' as const,
+          content,
+          created_at: new Date().toISOString(),
+        };
+        userMessageId = userMessage.id;
+        addMessage(userMessage);
+      } else {
+        // 일반 사용자: 서버에 저장
+        const userMessage = await withRetry(() => saveMessage(conversationId!, 'user', content));
+        userMessageId = userMessage.id;
+        addMessage(userMessage);
+      }
 
       // 스트리밍 시작
       setIsStreaming(true);
@@ -214,17 +249,32 @@ export function ChatPage() {
         throw new Error(streamError.message || '스트리밍 중 오류가 발생했습니다');
       }
 
-      // 응답 저장 (자동 재시도 적용)
+      // 응답 저장
       if (fullResponse.trim()) {
-        const assistantMessage = await withRetry(() =>
-          saveMessage(conversationId!, 'assistant', fullResponse)
-        );
-        addMessage(assistantMessage);
+        if (isGuest) {
+          // 게스트: 로컬 메시지
+          const assistantMessage = {
+            id: `msg-${Date.now()}`,
+            conversation_id: conversationId!,
+            role: 'assistant' as const,
+            content: fullResponse,
+            created_at: new Date().toISOString(),
+          };
+          addMessage(assistantMessage);
+        } else {
+          // 일반 사용자: 서버에 저장
+          const assistantMessage = await withRetry(() =>
+            saveMessage(conversationId!, 'assistant', fullResponse)
+          );
+          addMessage(assistantMessage);
+        }
 
         // 첫 메시지인 경우 제목 업데이트
         if (messages.length === 0) {
           const title = content.slice(0, 50);
-          await withRetry(() => updateConversationTitle(conversationId!, title));
+          if (!isGuest) {
+            await withRetry(() => updateConversationTitle(conversationId!, title));
+          }
           updateConversation(conversationId!, { title });
         }
       } else {

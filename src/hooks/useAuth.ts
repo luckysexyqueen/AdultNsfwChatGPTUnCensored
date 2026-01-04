@@ -14,10 +14,25 @@ function mapSupabaseUser(user: User): AuthUser {
 }
 
 export function useAuth() {
-  const { user, loading, login, logout, setLoading } = useAuthStore();
+  const { user, loading, login, loginAsGuest, logout, setLoading } = useAuthStore();
 
   useEffect(() => {
     let mounted = true;
+
+    // 게스트 사용자 확인
+    const guestUser = localStorage.getItem('guest-user');
+    if (guestUser) {
+      try {
+        const parsed = JSON.parse(guestUser);
+        if (mounted) {
+          login(parsed);
+          setLoading(false);
+        }
+        return;
+      } catch (e) {
+        console.error('Failed to parse guest user:', e);
+      }
+    }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (mounted && session?.user) login(mapSupabaseUser(session.user));
@@ -47,9 +62,14 @@ export function useAuth() {
   }, [login, logout, setLoading]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    logout();
+    const currentUser = user;
+    if (currentUser?.isGuest) {
+      logout();
+    } else {
+      await supabase.auth.signOut();
+      logout();
+    }
   };
 
-  return { user, loading, logout: handleLogout };
+  return { user, loading, logout: handleLogout, loginAsGuest };
 }

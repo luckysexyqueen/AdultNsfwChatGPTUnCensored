@@ -68,11 +68,7 @@ export async function streamChat(
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    const authToken = session?.access_token;
-
-    if (!authToken) {
-      throw new Error('인증 토큰이 없습니다. 다시 로그인해주세요.');
-    }
+    const authToken = session?.access_token || 'guest-token';
 
     return await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-stream`,

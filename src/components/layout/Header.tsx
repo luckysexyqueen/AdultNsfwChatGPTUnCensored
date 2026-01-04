@@ -34,6 +34,11 @@ export function Header() {
       <div className="flex h-14 items-center justify-between px-6">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold">AI Chat</h1>
+          {user?.isGuest && (
+            <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full">
+              게스트 모드
+            </span>
+          )}
         </div>
 
         <DropdownMenu>

@@ -19,6 +19,22 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // 인증 확인 (게스트도 허용)
+    const authHeader = req.headers.get('Authorization');
+    const isGuest = authHeader?.includes('guest-token');
+    
+    if (!isGuest && !authHeader) {
+      return new Response(
+        JSON.stringify({ error: '인증이 필요합니다' }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    console.log('Request mode:', isGuest ? 'Guest' : 'Authenticated');
+
     // 요청 본문 파싱
     let requestBody;
     try {
