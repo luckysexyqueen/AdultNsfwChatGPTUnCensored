@@ -1,4 +1,4 @@
-import { LogOut, User } from 'lucide-react';
+import { LogOut, User, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -10,9 +10,22 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useAutoRepair } from '@/hooks/useAutoRepair';
+import { messageQueue } from '@/lib/offline-queue';
 
 export function Header() {
   const { user, logout } = useAuth();
+  const { runEmergencyRepair } = useAutoRepair();
+
+  const handleEmergencyRepair = async () => {
+    if (confirm('긴급 수리를 실행하시겠습니까? 모든 캐시가 삭제되고 페이지가 새로고침됩니다.')) {
+      await runEmergencyRepair();
+    }
+  };
+
+  const handleProcessQueue = async () => {
+    await messageQueue.processQueue();
+  };
 
   if (!user) return null;
 
@@ -20,7 +33,7 @@ export function Header() {
     <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center justify-between px-6">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold">ChatGPT</h1>
+          <h1 className="text-xl font-semibold">AI Chat</h1>
         </div>
 
         <DropdownMenu>
@@ -41,6 +54,14 @@ export function Header() {
                 <p className="text-xs text-muted-foreground">{user.email}</p>
               </div>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleProcessQueue}>
+              대기 중인 메시지 전송
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleEmergencyRepair}>
+              <Wrench className="mr-2 h-4 w-4 text-yellow-400" />
+              긴급 수리
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout}>
               <LogOut className="mr-2 h-4 w-4" />

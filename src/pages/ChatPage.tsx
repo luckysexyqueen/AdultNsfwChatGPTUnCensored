@@ -8,6 +8,8 @@ import { ChatMessage } from '@/components/chat/ChatMessage';
 import { ChatInput } from '@/components/chat/ChatInput';
 import { EmptyState } from '@/components/chat/EmptyState';
 import { createConversation, saveMessage, updateConversationTitle, streamChat, fetchGPTFiles } from '@/lib/chat';
+import { messageQueue } from '@/lib/offline-queue';
+import { withRetry } from '@/lib/auto-repair';
 import { toast } from 'sonner';
 
 export function ChatPage() {
@@ -89,8 +91,10 @@ export function ChatPage() {
       return;
     }
 
+    // 오프라인이면 큐에 추가
     if (!isOnline) {
-      toast.error('오프라인 상태입니다. 인터넷 연결 후 다시 시도해주세요.');
+      const conversationId = currentConversationId || (await createConversation(user.id, content.slice(0, 50))).id;
+      messageQueue.addToQueue(conversationId, content);
       return;
     }
 
@@ -110,23 +114,25 @@ export function ChatPage() {
         }
       }
 
-      // 새 대화 생성
+      // 새 대화 생성 (자동 재시도 적용)
       if (!conversationId) {
         const title = content.slice(0, 50);
-        const newConv = await createConversation(
-          user.id,
-          title,
-          currentGPT?.id,
-          systemPrompt,
-          instructions
+        const newConv = await withRetry(() =>
+          createConversation(
+            user.id,
+            title,
+            currentGPT?.id,
+            systemPrompt,
+            instructions
+          )
         );
         conversationId = newConv.id;
         addConversation(newConv);
         setCurrentConversation(conversationId);
       }
 
-      // 사용자 메시지 저장
-      const userMessage = await saveMessage(conversationId, 'user', content);
+      // 사용자 메시지 저장 (자동 재시도 적용)
+      const userMessage = await withRetry(() => saveMessage(conversationId!, 'user', content));
       userMessageId = userMessage.id;
       addMessage(userMessage);
 
@@ -208,16 +214,18 @@ export function ChatPage() {
         throw new Error(streamError.message || '스트리밍 중 오류가 발생했습니다');
       }
 
-      // 응답 저장
+      // 응답 저장 (자동 재시도 적용)
       if (fullResponse.trim()) {
-        const assistantMessage = await saveMessage(conversationId, 'assistant', fullResponse);
+        const assistantMessage = await withRetry(() =>
+          saveMessage(conversationId!, 'assistant', fullResponse)
+        );
         addMessage(assistantMessage);
 
         // 첫 메시지인 경우 제목 업데이트
         if (messages.length === 0) {
           const title = content.slice(0, 50);
-          await updateConversationTitle(conversationId, title);
-          updateConversation(conversationId, { title });
+          await withRetry(() => updateConversationTitle(conversationId!, title));
+          updateConversation(conversationId!, { title });
         }
       } else {
         toast.error('AI 응답이 비어있습니다');

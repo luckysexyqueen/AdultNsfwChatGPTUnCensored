@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Message, CustomGPT, CustomGPTFile } from '@/types';
+import { withRetry } from './auto-repair';
 
 export async function createConversation(
   userId: string,
@@ -59,7 +60,8 @@ export async function streamChat(
   instructions?: string,
   gptFiles?: CustomGPTFile[]
 ): Promise<ReadableStream> {
-  try {
+  // 자동 재시도가 적용된 fetch 함수
+  const fetchWithRetry = async () => {
     // 온라인 상태 확인
     if (!navigator.onLine) {
       throw new Error('오프라인 상태입니다. 인터넷에 연결한 후 다시 시도해주세요.');
@@ -72,7 +74,7 @@ export async function streamChat(
       throw new Error('인증 토큰이 없습니다. 다시 로그인해주세요.');
     }
 
-    const response = await fetch(
+    return await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-stream`,
       {
         method: 'POST',
@@ -88,6 +90,11 @@ export async function streamChat(
         }),
       }
     );
+  };
+
+  try {
+    // 자동 재시도 적용 (최대 3번, 1초 간격)
+    const response = await withRetry(fetchWithRetry, 3, 1000);
 
     if (!response.ok) {
       const errorText = await response.text();
