@@ -21,18 +21,9 @@ Deno.serve(async (req) => {
   try {
     // 인증 확인 (게스트도 허용)
     const authHeader = req.headers.get('Authorization');
-    const isGuest = authHeader?.includes('guest-token');
+    const isGuest = authHeader?.includes('guest-token') || authHeader?.includes('guest-');
     
-    if (!isGuest && !authHeader) {
-      return new Response(
-        JSON.stringify({ error: '인증이 필요합니다' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
-
+    console.log('Auth header:', authHeader?.substring(0, 50));
     console.log('Request mode:', isGuest ? 'Guest' : 'Authenticated');
 
     // 요청 본문 파싱
@@ -66,9 +57,15 @@ Deno.serve(async (req) => {
     const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
 
     if (!baseUrl || !apiKey) {
-      console.error('Missing OnSpace AI configuration');
+      console.error('Missing OnSpace AI configuration:', { 
+        hasBaseUrl: !!baseUrl, 
+        hasApiKey: !!apiKey 
+      });
       return new Response(
-        JSON.stringify({ error: 'AI 서비스 설정이 누락되었습니다' }),
+        JSON.stringify({ 
+          error: 'AI 서비스 설정이 누락되었습니다',
+          details: 'OnSpace AI API 키가 설정되지 않았습니다. 관리자에게 문의하세요.'
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -157,10 +154,27 @@ Deno.serve(async (req) => {
     }
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('OnSpace AI API error:', error);
+      let errorMessage = 'AI API 오류가 발생했습니다';
+      try {
+        const errorData = await response.text();
+        console.error('OnSpace AI API error:', errorData);
+        
+        try {
+          const errorJson = JSON.parse(errorData);
+          errorMessage = errorJson.error || errorJson.message || errorMessage;
+        } catch {
+          errorMessage = errorData || errorMessage;
+        }
+      } catch (e) {
+        console.error('Failed to parse error response:', e);
+      }
+      
       return new Response(
-        JSON.stringify({ error: `AI API 오류: ${error}` }),
+        JSON.stringify({ 
+          error: errorMessage,
+          status: response.status,
+          details: '메시지 전송 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.'
+        }),
         {
           status: response.status,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

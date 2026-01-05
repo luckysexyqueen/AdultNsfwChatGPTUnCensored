@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { AuthPage } from '@/pages/AuthPage';
 import { ChatPage } from '@/pages/ChatPage';
@@ -6,10 +7,18 @@ import { Header } from '@/components/layout/Header';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { useChatStore } from '@/stores/chatStore';
 import { Toaster } from 'sonner';
+import { initDB } from '@/lib/offline';
 
 function App() {
   const { user, loading } = useAuth();
   const { setCurrentConversation, setMessages } = useChatStore();
+
+  // IndexedDB 초기화
+  useEffect(() => {
+    initDB().catch(err => {
+      console.error('Failed to initialize IndexedDB:', err);
+    });
+  }, []);
 
   const handleNewChat = () => {
     setCurrentConversation(null);

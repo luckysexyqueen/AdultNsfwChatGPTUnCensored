@@ -1,17 +1,26 @@
 import { useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useChatStore } from '@/stores/chatStore';
+import { useAuth } from '@/hooks/useAuth';
 import { Conversation } from '@/types';
 import { cacheConversation, getCachedConversations } from '@/lib/offline';
 
 export function useConversations(userId: string | undefined) {
   const { setConversations } = useChatStore();
+  const { user } = useAuth();
 
   useEffect(() => {
     if (!userId) return;
 
     const loadConversations = async () => {
       try {
+        // 게스트 모드: IndexedDB에서만 로드
+        if (user?.isGuest) {
+          const cached = await getCachedConversations(userId);
+          setConversations(cached);
+          return;
+        }
+
         // 먼저 캐시된 데이터 로드
         const cached = await getCachedConversations(userId);
         if (cached.length > 0) {
@@ -68,5 +77,5 @@ export function useConversations(userId: string | undefined) {
     };
 
     loadConversations();
-  }, [userId, setConversations]);
+  }, [userId, setConversations, user?.isGuest]);
 }

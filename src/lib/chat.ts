@@ -98,14 +98,33 @@ export async function streamChat(
     const response = await withRetry(fetchWithRetry, 3, 1000);
 
     if (!response.ok) {
-      const errorText = await response.text();
       let errorMessage = `메시지 전송 실패 (${response.status})`;
       
       try {
-        const errorJson = JSON.parse(errorText);
-        errorMessage = errorJson.error || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorJson.details || errorJson.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+      } catch (e) {
+        console.error('Failed to read error response:', e);
+      }
+      
+      // 상태 코드별 사용자 친화적 메시지
+      if (response.status === 401) {
+        errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
+      } else if (response.status === 403) {
+        errorMessage = '접근 권한이 없습니다.';
+      } else if (response.status === 429) {
+        errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.';
+      } else if (response.status === 500) {
+        errorMessage = '서버 오류가 발생했습니다. ' + (errorMessage.includes('AI 서비스') ? errorMessage : '잠시 후 다시 시도해주세요.');
+      } else if (response.status >= 500) {
+        errorMessage = '서버에 문제가 발생했습니다. 잠시 후 다시 시도해주세요.';
       }
       
       throw new Error(errorMessage);

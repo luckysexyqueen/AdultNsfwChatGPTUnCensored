@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/chat/EmptyState';
 import { createConversation, saveMessage, updateConversationTitle, streamChat, fetchGPTFiles } from '@/lib/chat';
 import { messageQueue } from '@/lib/offline-queue';
 import { withRetry } from '@/lib/auto-repair';
+import { cacheConversation, cacheMessage } from '@/lib/offline';
 import { toast } from 'sonner';
 
 export function ChatPage() {
@@ -140,6 +141,8 @@ export function ChatPage() {
           conversationId = newConv.id;
           addConversation(newConv);
           setCurrentConversation(conversationId);
+          // IndexedDB에 저장
+          await cacheConversation(newConv);
         } else {
           // 일반 사용자: 서버에 저장
           const newConv = await withRetry(() =>
@@ -154,6 +157,8 @@ export function ChatPage() {
           conversationId = newConv.id;
           addConversation(newConv);
           setCurrentConversation(conversationId);
+          // IndexedDB에도 캐시
+          await cacheConversation(newConv);
         }
       }
 
@@ -169,11 +174,15 @@ export function ChatPage() {
         };
         userMessageId = userMessageObj.id;
         addMessage(userMessageObj);
+        // IndexedDB에 저장
+        await cacheMessage(userMessageObj);
       } else {
         // 일반 사용자: 서버에 저장
         userMessageObj = await withRetry(() => saveMessage(conversationId!, 'user', content));
         userMessageId = userMessageObj.id;
         addMessage(userMessageObj);
+        // IndexedDB에도 캐시
+        await cacheMessage(userMessageObj);
       }
 
       // 스트리밍 시작
@@ -266,21 +275,31 @@ export function ChatPage() {
             created_at: new Date().toISOString(),
           };
           addMessage(assistantMessage);
+          // IndexedDB에 저장
+          await cacheMessage(assistantMessage);
         } else {
           // 일반 사용자: 서버에 저장
           const assistantMessage = await withRetry(() =>
             saveMessage(conversationId!, 'assistant', fullResponse)
           );
           addMessage(assistantMessage);
+          // IndexedDB에도 캐시
+          await cacheMessage(assistantMessage);
         }
 
         // 첫 메시지인 경우 제목 업데이트
         if (messages.length === 0 && userMessageObj) {
           const title = content.slice(0, 50);
+          const updatedConv = { title, updated_at: new Date().toISOString() };
           if (!isGuest) {
             await withRetry(() => updateConversationTitle(conversationId!, title));
           }
-          updateConversation(conversationId!, { title });
+          updateConversation(conversationId!, updatedConv);
+          // IndexedDB 업데이트
+          const conv = conversations.find(c => c.id === conversationId!);
+          if (conv) {
+            await cacheConversation({ ...conv, ...updatedConv });
+          }
         }
       } else {
         toast.error('AI 응답이 비어있습니다');
