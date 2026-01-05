@@ -62,20 +62,20 @@ export async function streamChat(
 ): Promise<ReadableStream> {
   // 메시지 유효성 검사
   if (!messages || messages.length === 0) {
-    throw new Error('메시지가 비어있습니다');
+    throw new Error('메시지를 입력해주세요');
+  }
+
+  // 온라인 상태 확인
+  if (!navigator.onLine) {
+    throw new Error('인터넷 연결을 확인해주세요');
   }
 
   // 자동 재시도가 적용된 fetch 함수
   const fetchWithRetry = async () => {
-    // 온라인 상태 확인
-    if (!navigator.onLine) {
-      throw new Error('오프라인 상태입니다. 인터넷에 연결한 후 다시 시도해주세요.');
-    }
-
     const { data: { session } } = await supabase.auth.getSession();
     const authToken = session?.access_token || 'guest-token';
 
-    return await fetch(
+    const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat-stream`,
       {
         method: 'POST',
@@ -85,48 +85,64 @@ export async function streamChat(
         },
         body: JSON.stringify({
           messages: messages.map((m) => ({ role: m.role, content: m.content })),
-          systemPrompt,
-          instructions,
-          gptFiles: gptFiles || [],
+          systemPrompt: systemPrompt || undefined,
+          instructions: instructions || undefined,
+          gptFiles: gptFiles && gptFiles.length > 0 ? gptFiles : undefined,
         }),
       }
     );
+
+    return response;
   };
 
   try {
-    // 자동 재시도 적용 (최대 3번, 1초 간격)
-    const response = await withRetry(fetchWithRetry, 3, 1000);
+    // 자동 재시도 적용 (최대 2번, 1초 간격)
+    const response = await withRetry(fetchWithRetry, 2, 1000);
 
     if (!response.ok) {
-      let errorMessage = '메시지 전송 실패';
+      let errorMessage = 'AI 응답 실패';
       
       try {
         const errorText = await response.text();
-        console.error('API error response:', response.status, errorText);
+        console.error('Stream API error:', response.status, errorText);
         
         try {
           const errorJson = JSON.parse(errorText);
-          // Edge Function에서 온 사용자 친화적 메시지 우선 사용
           errorMessage = errorJson.error || errorJson.details || errorJson.message || errorMessage;
         } catch {
-          // JSON이 아니면 텍스트 그대로 (최대 200자)
-          errorMessage = errorText.substring(0, 200) || errorMessage;
+          errorMessage = errorText.substring(0, 150) || errorMessage;
         }
       } catch (e) {
-        console.error('Failed to read error response:', e);
-        errorMessage = `네트워크 오류 (${response.status})`;
+        console.error('Failed to read error:', e);
+        
+        // 상태 코드별 사용자 친화적 메시지
+        if (response.status === 429) {
+          errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요';
+        } else if (response.status >= 500) {
+          errorMessage = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요';
+        } else if (response.status === 401) {
+          errorMessage = '인증 오류. 로그인 후 다시 시도해주세요';
+        } else {
+          errorMessage = `오류 발생 (코드: ${response.status})`;
+        }
       }
       
       throw new Error(errorMessage);
     }
 
     if (!response.body) {
-      throw new Error('응답 스트림이 없습니다');
+      throw new Error('응답을 받지 못했습니다');
     }
 
     return response.body;
-  } catch (error) {
+  } catch (error: any) {
     console.error('streamChat error:', error);
+    
+    // 네트워크 오류 처리
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      throw new Error('네트워크 연결이 불안정합니다. 다시 시도해주세요');
+    }
+    
     throw error;
   }
 }

@@ -60,14 +60,21 @@ export async function initDB(): Promise<IDBDatabase> {
 
 // 대화 캐싱
 export async function cacheConversation(conversation: Conversation): Promise<void> {
-  const database = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('conversations', 'readwrite');
-    const store = tx.objectStore('conversations');
-    store.put(conversation);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    const database = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction('conversations', 'readwrite');
+      const store = tx.objectStore('conversations');
+      const request = store.put(conversation);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (error) {
+    console.error('Failed to cache conversation:', error);
+    throw error;
+  }
 }
 
 export async function getCachedConversations(userId: string): Promise<Conversation[]> {
@@ -90,14 +97,21 @@ export async function getCachedConversations(userId: string): Promise<Conversati
 
 // 메시지 캐싱
 export async function cacheMessage(message: Message): Promise<void> {
-  const database = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('messages', 'readwrite');
-    const store = tx.objectStore('messages');
-    store.put(message);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    const database = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction('messages', 'readwrite');
+      const store = tx.objectStore('messages');
+      const request = store.put(message);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (error) {
+    console.error('Failed to cache message:', error);
+    throw error;
+  }
 }
 
 export async function getCachedMessages(conversationId: string): Promise<Message[]> {
@@ -120,14 +134,21 @@ export async function getCachedMessages(conversationId: string): Promise<Message
 
 // 커스텀 GPT 캐싱
 export async function cacheCustomGPT(gpt: CustomGPT): Promise<void> {
-  const database = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction('customGPTs', 'readwrite');
-    const store = tx.objectStore('customGPTs');
-    store.put(gpt);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    const database = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction('customGPTs', 'readwrite');
+      const store = tx.objectStore('customGPTs');
+      const request = store.put(gpt);
+      
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (error) {
+    console.error('Failed to cache custom GPT:', error);
+    throw error;
+  }
 }
 
 export async function getCachedCustomGPTs(userId: string): Promise<CustomGPT[]> {
@@ -150,13 +171,24 @@ export async function getCachedCustomGPTs(userId: string): Promise<CustomGPT[]> 
 
 // 캐시 초기화
 export async function clearCache(): Promise<void> {
-  const database = await initDB();
-  return new Promise((resolve, reject) => {
-    const tx = database.transaction(['conversations', 'messages', 'customGPTs'], 'readwrite');
-    tx.objectStore('conversations').clear();
-    tx.objectStore('messages').clear();
-    tx.objectStore('customGPTs').clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    const database = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction(['conversations', 'messages', 'customGPTs'], 'readwrite');
+      
+      const clearConv = tx.objectStore('conversations').clear();
+      const clearMsg = tx.objectStore('messages').clear();
+      const clearGPT = tx.objectStore('customGPTs').clear();
+      
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      
+      clearConv.onerror = () => reject(clearConv.error);
+      clearMsg.onerror = () => reject(clearMsg.error);
+      clearGPT.onerror = () => reject(clearGPT.error);
+    });
+  } catch (error) {
+    console.error('Failed to clear cache:', error);
+    throw error;
+  }
 }

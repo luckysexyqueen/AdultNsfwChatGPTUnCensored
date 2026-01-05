@@ -15,10 +15,11 @@ Deno.serve(async (req) => {
   try {
     // 인증 확인 (게스트도 허용)
     const authHeader = req.headers.get('Authorization');
-    const isGuest = authHeader?.includes('guest-token') || authHeader?.includes('guest-');
+    const token = authHeader?.replace('Bearer ', '') || '';
+    const isGuest = token === 'guest-token' || token.startsWith('guest-');
     
-    console.log('Auth header:', authHeader?.substring(0, 50));
     console.log('Request mode:', isGuest ? 'Guest' : 'Authenticated');
+    console.log('Token prefix:', token.substring(0, 20));
 
     // 요청 본문 파싱
     let requestBody;
@@ -68,44 +69,43 @@ Deno.serve(async (req) => {
     }
 
     // 시스템 프롬프트 구성
-    const chatMessages = [];
+    let finalSystemPrompt = systemPrompt?.trim() || BASE_SYSTEM_PROMPT;
     
-    // 파일 내용을 컨텍스트로 추가
-    let filesContext = '';
+    // 추가 지침
+    if (instructions?.trim()) {
+      finalSystemPrompt += `\n\n추가 지침:\n${instructions.trim()}`;
+    }
+    
+    // 파일 컨텍스트 추가 (최대 10개, 각 5000자로 제한)
     if (gptFiles && gptFiles.length > 0) {
       const fileContents = gptFiles
+        .slice(0, 10) // 최대 10개 파일
         .filter(f => f.file_content)
-        .map(f => `=== ${f.file_name} ===\n${f.file_content}`)
+        .map(f => {
+          const content = f.file_content!.substring(0, 5000); // 각 파일 최대 5000자
+          return `=== ${f.file_name} ===\n${content}${f.file_content!.length > 5000 ? '\n... (내용 생략)' : ''}`;
+        })
         .join('\n\n');
       
       if (fileContents) {
-        filesContext = `\n\n📁 참고 자료:\n${fileContents}`;
+        finalSystemPrompt += `\n\n📁 참고 자료:\n${fileContents}`;
       }
-    }
-    
-    // 시스템 프롬프트 구성 (간결하게)
-    let finalSystemPrompt = systemPrompt?.trim() || BASE_SYSTEM_PROMPT;
-    
-    if (instructions?.trim()) {
-      finalSystemPrompt += `\n\n추가 지침: ${instructions.trim()}`;
-    }
-    
-    if (filesContext) {
-      finalSystemPrompt += filesContext;
     }
     
     console.log('Chat request:', {
       messageCount: messages.length,
       systemPromptLength: finalSystemPrompt.length,
       fileCount: gptFiles?.length || 0,
+      isGuest,
     });
     
-    chatMessages.push({
-      role: 'system',
-      content: finalSystemPrompt
-    });
-    
-    chatMessages.push(...messages);
+    const chatMessages = [
+      {
+        role: 'system',
+        content: finalSystemPrompt
+      },
+      ...messages
+    ];
 
     console.log('Calling OnSpace AI API...');
     let response;
