@@ -98,33 +98,23 @@ export async function streamChat(
     const response = await withRetry(fetchWithRetry, 3, 1000);
 
     if (!response.ok) {
-      let errorMessage = `메시지 전송 실패 (${response.status})`;
+      let errorMessage = '메시지 전송 실패';
       
       try {
         const errorText = await response.text();
-        console.error('API error response:', errorText);
+        console.error('API error response:', response.status, errorText);
         
         try {
           const errorJson = JSON.parse(errorText);
+          // Edge Function에서 온 사용자 친화적 메시지 우선 사용
           errorMessage = errorJson.error || errorJson.details || errorJson.message || errorMessage;
         } catch {
-          errorMessage = errorText || errorMessage;
+          // JSON이 아니면 텍스트 그대로 (최대 200자)
+          errorMessage = errorText.substring(0, 200) || errorMessage;
         }
       } catch (e) {
         console.error('Failed to read error response:', e);
-      }
-      
-      // 상태 코드별 사용자 친화적 메시지
-      if (response.status === 401) {
-        errorMessage = '인증이 만료되었습니다. 다시 로그인해주세요.';
-      } else if (response.status === 403) {
-        errorMessage = '접근 권한이 없습니다.';
-      } else if (response.status === 429) {
-        errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.';
-      } else if (response.status === 500) {
-        errorMessage = '서버 오류가 발생했습니다. ' + (errorMessage.includes('AI 서비스') ? errorMessage : '잠시 후 다시 시도해주세요.');
-      } else if (response.status >= 500) {
-        errorMessage = '서버에 문제가 발생했습니다. 잠시 후 다시 시도해주세요.';
+        errorMessage = `네트워크 오류 (${response.status})`;
       }
       
       throw new Error(errorMessage);

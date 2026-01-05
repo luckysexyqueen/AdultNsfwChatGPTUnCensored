@@ -198,33 +198,9 @@ export function ChatPage() {
       let buffer = '';
 
       try {
-        let consecutiveErrors = 0;
-        const maxErrors = 5;
-
         while (true) {
           const { done, value } = await reader.read();
-          if (done) {
-            // 버퍼에 남은 데이터 처리
-            if (buffer.trim()) {
-              const lines = buffer.split('\n');
-              for (const line of lines) {
-                if (!line.trim() || !line.startsWith('data: ')) continue;
-                const data = line.slice(6).trim();
-                if (data === '[DONE]') continue;
-                try {
-                  const parsed = JSON.parse(data);
-                  const content = parsed.choices?.[0]?.delta?.content;
-                  if (content) {
-                    fullResponse += content;
-                    setStreamingMessage(fullResponse);
-                  }
-                } catch (e) {
-                  console.debug('Final buffer parse error:', e);
-                }
-              }
-            }
-            break;
-          }
+          if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
@@ -233,34 +209,49 @@ export function ChatPage() {
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            if (!line.trim()) continue;
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
             
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim();
-              if (data === '[DONE]') continue;
+            const data = trimmed.slice(6).trim();
+            if (data === '[DONE]') continue;
 
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) {
-                  fullResponse += content;
-                  setStreamingMessage(fullResponse);
-                  consecutiveErrors = 0; // 성공하면 에러 카운트 리셋
-                }
-              } catch (e) {
-                consecutiveErrors++;
-                if (consecutiveErrors > maxErrors) {
-                  console.error('Too many consecutive parsing errors');
-                  throw new Error('응답 파싱 중 오류가 발생했습니다');
-                }
-                console.debug('JSON parse error (chunk might be incomplete):', e);
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                fullResponse += content;
+                setStreamingMessage(fullResponse);
               }
+            } catch (e) {
+              // JSON 파싱 실패는 조용히 무시 (불완전한 청크일 수 있음)
+              console.debug('Skipping unparseable chunk:', data.substring(0, 100));
+            }
+          }
+        }
+
+        // 버퍼에 남은 데이터 최종 처리
+        if (buffer.trim()) {
+          const finalLines = buffer.split('\n');
+          for (const line of finalLines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+            const data = trimmed.slice(6).trim();
+            if (data === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(data);
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                fullResponse += content;
+                setStreamingMessage(fullResponse);
+              }
+            } catch (e) {
+              console.debug('Final buffer parse skipped');
             }
           }
         }
       } catch (streamError: any) {
         console.error('Stream reading error:', streamError);
-        throw new Error(streamError.message || '스트리밍 중 오류가 발생했습니다');
+        throw new Error('스트리밍 중 연결이 끊어졌습니다. 다시 시도해주세요.');
       }
 
       // 응답 저장
