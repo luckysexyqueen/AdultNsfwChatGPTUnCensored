@@ -269,7 +269,9 @@ export function ChatPage() {
       
       // 사용자 메시지가 저장되지 않았다면 UI에서도 제거
       if (!savedUserMessage && userMessageObj) {
-        setMessages(messages.filter(m => m.id !== userMessageObj.id));
+        // 현재 메시지 목록에서 제거
+        const filteredMessages = messages.filter(m => m.id !== userMessageObj.id);
+        useChatStore.getState().setMessages(filteredMessages);
       }
       
       const errorMessage = error?.message || '메시지 전송에 실패했습니다';

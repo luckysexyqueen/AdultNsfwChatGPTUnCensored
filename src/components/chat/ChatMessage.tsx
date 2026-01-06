@@ -21,7 +21,7 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
         
         <div className="flex-1 space-y-2 overflow-hidden">
           <div className="prose prose-sm dark:prose-invert max-w-none">
-            <p className="whitespace-pre-wrap break-words m-0">
+            <p className="whitespace-pre-wrap break-words m-0 text-foreground">
               {message.content}
               {isStreaming && <span className="inline-block w-2 h-4 bg-foreground ml-1 animate-pulse" />}
             </p>
