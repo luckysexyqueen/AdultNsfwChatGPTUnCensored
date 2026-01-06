@@ -92,13 +92,13 @@ export function ChatPage() {
       return;
     }
 
-    // 게스트 사용자는 로컬 데이터만 사용
     const isGuest = user.isGuest === true;
 
-    // 오프라인이면 큐에 추가 (게스트는 불가)
+    // 오프라인 체크
     if (!isOnline) {
       if (!isGuest && currentConversationId) {
         messageQueue.addToQueue(currentConversationId, content);
+        toast.info('메시지가 큐에 추가되었습니다. 온라인 상태가 되면 자동 전송됩니다.');
       } else {
         toast.error(isGuest ? '게스트 모드에서는 오프라인 전송이 지원되지 않습니다' : '인터넷에 연결된 후 사용할 수 있습니다');
       }
@@ -106,14 +106,14 @@ export function ChatPage() {
     }
 
     let conversationId = currentConversationId;
-    let userMessageObj: any = null;
-    let savedUserMessage = false;
+    let userMessageId: string | null = null;
+    const tempUserId = `temp-${Date.now()}`;
 
     try {
+      // GPT 설정 가져오기
       let systemPrompt = currentGPT?.system_prompt;
       let instructions = currentGPT?.instructions;
 
-      // 현재 대화의 GPT 설정 가져오기
       if (conversationId && !currentGPT) {
         const conv = conversations.find(c => c.id === conversationId);
         if (conv) {
@@ -126,7 +126,6 @@ export function ChatPage() {
       if (!conversationId) {
         const title = content.slice(0, 50);
         if (isGuest) {
-          // 게스트: 로컬 대화 생성 (타임스탬프 기반 고유 ID)
           const newConv = {
             id: `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             user_id: user.id,
@@ -140,66 +139,67 @@ export function ChatPage() {
           conversationId = newConv.id;
           addConversation(newConv);
           setCurrentConversation(conversationId);
-          await cacheConversation(newConv).catch(err => console.error('Cache conversation failed:', err));
+          await cacheConversation(newConv).catch(console.error);
         } else {
-          // 일반 사용자: 서버에 저장
           const newConv = await withRetry(() =>
             createConversation(user.id, title, currentGPT?.id, systemPrompt, instructions)
           );
           conversationId = newConv.id;
           addConversation(newConv);
           setCurrentConversation(conversationId);
-          await cacheConversation(newConv).catch(err => console.error('Cache conversation failed:', err));
+          await cacheConversation(newConv).catch(console.error);
         }
       }
 
-      // 사용자 메시지 생성 (먼저 객체 생성)
-      userMessageObj = {
-        id: isGuest ? `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` : `temp-${Date.now()}`,
+      // 사용자 메시지 UI에 표시 (임시 ID)
+      const userMessage = {
+        id: tempUserId,
         conversation_id: conversationId!,
         role: 'user' as const,
         content,
         created_at: new Date().toISOString(),
       };
 
-      // 스트리밍 시작 (메시지 저장 전에 시작)
+      addMessage(userMessage);
       setIsStreaming(true);
       setStreamingMessage('');
-      addMessage(userMessageObj); // UI에 먼저 표시
 
-      const chatMessages = [...messages, userMessageObj];
-      
-      // 스트리밍 호출 (에러가 나면 바로 catch로 감)
+      const chatMessages = [...messages, userMessage];
+
+      // AI 응답 스트리밍
       const stream = await streamChat(chatMessages, systemPrompt, instructions, currentGPTFiles);
       const reader = stream.getReader();
       const decoder = new TextDecoder();
 
-      // 스트리밍 성공 후 사용자 메시지 저장
+      // 사용자 메시지 저장
       if (isGuest) {
-        await cacheMessage(userMessageObj).catch(err => console.error('Cache message failed:', err));
-        savedUserMessage = true;
+        userMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const savedUserMsg = { ...userMessage, id: userMessageId };
+        await cacheMessage(savedUserMsg).catch(console.error);
+        // UI 업데이트
+        const updatedMessages = messages.map(m => m.id === tempUserId ? savedUserMsg : m);
+        useChatStore.getState().setMessages([...updatedMessages, savedUserMsg]);
       } else {
         const savedMsg = await withRetry(() => saveMessage(conversationId!, 'user', content));
-        userMessageObj.id = savedMsg.id; // 실제 ID로 업데이트
-        await cacheMessage(savedMsg).catch(err => console.error('Cache message failed:', err));
-        savedUserMessage = true;
+        userMessageId = savedMsg.id;
+        await cacheMessage(savedMsg).catch(console.error);
       }
 
+      // 스트림 읽기
       let fullResponse = '';
       let buffer = '';
 
-      // 스트림 읽기 (단순화된 로직)
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // 마지막 불완전한 줄은 버퍼에 유지
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (!line.trim() || !line.includes('data: ')) continue;
-          
+
           const jsonStr = line.replace(/^data:\s*/, '').trim();
           if (jsonStr === '[DONE]') continue;
 
@@ -210,17 +210,17 @@ export function ChatPage() {
               fullResponse += delta;
               setStreamingMessage(fullResponse);
             }
-          } catch {
-            // 파싱 실패 무시
+          } catch (e) {
+            // 파싱 에러 무시
           }
         }
       }
 
-      // 응답 저장
       if (!fullResponse.trim()) {
-        throw new Error('AI 응답이 비어있습니다');
+        throw new Error('AI가 응답을 생성하지 못했습니다');
       }
 
+      // AI 응답 저장
       const assistantMessage = {
         id: isGuest ? `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` : `temp-${Date.now()}`,
         conversation_id: conversationId!,
@@ -231,12 +231,12 @@ export function ChatPage() {
 
       if (isGuest) {
         addMessage(assistantMessage);
-        await cacheMessage(assistantMessage).catch(err => console.error('Cache message failed:', err));
+        await cacheMessage(assistantMessage).catch(console.error);
       } else {
         const savedMsg = await withRetry(() => saveMessage(conversationId!, 'assistant', fullResponse));
         assistantMessage.id = savedMsg.id;
         addMessage(assistantMessage);
-        await cacheMessage(savedMsg).catch(err => console.error('Cache message failed:', err));
+        await cacheMessage(savedMsg).catch(console.error);
       }
 
       // 첫 메시지인 경우 제목 업데이트
@@ -244,38 +244,41 @@ export function ChatPage() {
         const title = content.slice(0, 50);
         const updatedConv = { title, updated_at: new Date().toISOString() };
         if (!isGuest) {
-          await withRetry(() => updateConversationTitle(conversationId!, title)).catch(err => 
-            console.error('Update title failed:', err)
-          );
+          await withRetry(() => updateConversationTitle(conversationId!, title)).catch(console.error);
         }
         updateConversation(conversationId!, updatedConv);
         const conv = conversations.find(c => c.id === conversationId!);
         if (conv) {
-          await cacheConversation({ ...conv, ...updatedConv }).catch(err => 
-            console.error('Cache updated conversation failed:', err)
-          );
+          await cacheConversation({ ...conv, ...updatedConv }).catch(console.error);
         }
       }
 
-      // 성공 완료
       setStreamingMessage('');
       setIsStreaming(false);
     } catch (error: any) {
-      console.error('Failed to send message:', error);
-      
-      // 에러 시 상태 정리
+      console.error('메시지 전송 실패:', error);
+
+      // 상태 초기화
       setIsStreaming(false);
       setStreamingMessage('');
-      
-      // 사용자 메시지가 저장되지 않았다면 UI에서도 제거
-      if (!savedUserMessage && userMessageObj) {
-        // 현재 메시지 목록에서 제거
-        const filteredMessages = messages.filter(m => m.id !== userMessageObj.id);
+
+      // 임시 메시지 제거 (저장되지 않은 경우)
+      if (!userMessageId) {
+        const filteredMessages = messages.filter(m => m.id !== tempUserId);
         useChatStore.getState().setMessages(filteredMessages);
       }
+
+      // 사용자 친화적 에러 메시지
+      let errorMsg = '메시지 전송에 실패했습니다';
+      if (error?.message?.includes('AI')) {
+        errorMsg = error.message;
+      } else if (error?.message?.includes('네트워크') || error?.message?.includes('network')) {
+        errorMsg = '네트워크 연결을 확인해주세요';
+      } else if (error?.message?.includes('인증') || error?.message?.includes('auth')) {
+        errorMsg = '인증에 실패했습니다. 다시 로그인해주세요';
+      }
       
-      const errorMessage = error?.message || '메시지 전송에 실패했습니다';
-      toast.error(errorMessage);
+      toast.error(errorMsg);
     }
   };
 
