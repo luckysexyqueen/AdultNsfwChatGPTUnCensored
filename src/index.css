@@ -57,6 +57,17 @@
     @apply bg-background text-foreground;
     font-family: "Söhne", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   }
+  
+  /* Input 및 Textarea 텍스트 명시적 색상 지정 */
+  input,
+  textarea {
+    @apply text-foreground;
+  }
+  
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-muted-foreground;
+  }
 }
 
 @layer components {
