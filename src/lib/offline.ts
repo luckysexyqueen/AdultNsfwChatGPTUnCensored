@@ -169,6 +169,37 @@ export async function getCachedCustomGPTs(userId: string): Promise<CustomGPT[]> 
   }
 }
 
+// 대화 캐시에서 삭제
+export async function deleteConversationFromCache(conversationId: string): Promise<void> {
+  try {
+    const database = await initDB();
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction(['conversations', 'messages'], 'readwrite');
+
+      // 대화 삭제
+      tx.objectStore('conversations').delete(conversationId);
+
+      // 해당 대화의 메시지도 모두 삭제
+      const msgStore = tx.objectStore('messages');
+      const msgIndex = msgStore.index('conversation_id');
+      const msgRequest = msgIndex.getAll(conversationId);
+
+      msgRequest.onsuccess = () => {
+        const msgs = msgRequest.result || [];
+        for (const msg of msgs) {
+          msgStore.delete(msg.id);
+        }
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (error) {
+    console.error('Failed to delete conversation from cache:', error);
+    throw error;
+  }
+}
+
 // 캐시 초기화
 export async function clearCache(): Promise<void> {
   try {

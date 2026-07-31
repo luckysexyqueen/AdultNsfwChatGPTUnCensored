@@ -19,7 +19,11 @@ export function useMessages(conversationId: string | null) {
       // 게스트 모드: IndexedDB에서만 로드
       if (user?.isGuest) {
         const cached = await getCachedMessages(conversationId);
-        setMessages(cached);
+        // 생성 시간순 정렬
+        const sorted = cached.sort((a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        );
+        setMessages(sorted);
         return;
       }
 
@@ -32,6 +36,14 @@ export function useMessages(conversationId: string | null) {
 
       if (error) {
         console.error('Error fetching messages:', error);
+        // 에러 시 캐시에서 로드 시도
+        const cached = await getCachedMessages(conversationId);
+        if (cached.length > 0) {
+          const sorted = cached.sort((a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          setMessages(sorted);
+        }
         return;
       }
 

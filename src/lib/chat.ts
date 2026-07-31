@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Message, CustomGPT, CustomGPTFile } from '@/types';
+import { Message, CustomGPT, CustomGPTFile, ChatFileAttachment } from '@/types';
 import { withRetry } from './auto-repair';
 
 export async function createConversation(
@@ -58,7 +58,9 @@ export async function streamChat(
   messages: Message[],
   systemPrompt?: string,
   instructions?: string,
-  gptFiles?: CustomGPTFile[]
+  gptFiles?: CustomGPTFile[],
+  chatAttachments?: ChatFileAttachment[],
+  lastUserContent?: string
 ): Promise<ReadableStream> {
   // 메시지 유효성 검사
   if (!messages || messages.length === 0) {
@@ -88,6 +90,8 @@ export async function streamChat(
           systemPrompt: systemPrompt || undefined,
           instructions: instructions || undefined,
           gptFiles: gptFiles && gptFiles.length > 0 ? gptFiles : undefined,
+          chatAttachments: chatAttachments && chatAttachments.length > 0 ? chatAttachments : undefined,
+          lastUserContent: lastUserContent,
         }),
       }
     );
@@ -114,9 +118,13 @@ export async function streamChat(
         }
       } catch (e) {
         console.error('Failed to read error:', e);
-        
-        // 상태 코드별 사용자 친화적 메시지
-        if (response.status === 429) {
+      }
+      
+      // 상태 코드별 사용자 친화적 메시지 (파싱된 메시지가 기본값이면 대체)
+      if (errorMessage === 'AI 응답 실패') {
+        if (response.status === 402) {
+          errorMessage = 'AI 서비스 크레딧이 부족합니다. 관리자에게 문의하세요';
+        } else if (response.status === 429) {
           errorMessage = '요청이 너무 많습니다. 잠시 후 다시 시도해주세요';
         } else if (response.status >= 500) {
           errorMessage = '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요';

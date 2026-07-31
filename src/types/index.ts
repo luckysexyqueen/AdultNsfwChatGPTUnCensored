@@ -60,3 +60,12 @@ export interface AuthUser {
   avatar?: string;
   isGuest?: boolean;
 }
+
+export interface ChatFileAttachment {
+  name: string;
+  mimeType: string;
+  type: 'image' | 'text' | 'other';
+  url?: string;         // 스토리지 signed URL
+  base64?: string;      // 게스트 모드용 base64 data URL
+  textContent?: string; // 텍스트 파일 내용
+}

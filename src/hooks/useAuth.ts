@@ -21,31 +21,48 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true;
 
-    // 게스트 사용자 확인
-    const guestUser = localStorage.getItem('guest-user');
-    if (guestUser) {
-      try {
-        const parsed = JSON.parse(guestUser);
+    const initAuth = async () => {
+      // 실제 Supabase 세션 우선 확인
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        // 유효한 Supabase 세션이 있으면 게스트 데이터 제거 후 실제 사용자로 로그인
         if (mounted) {
-          login(parsed);
+          localStorage.removeItem('guest-user');
+          login(mapSupabaseUser(session.user));
           setLoading(false);
         }
         return;
-      } catch (e) {
-        console.error('Failed to parse guest user:', e);
       }
-    }
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted && session?.user) login(mapSupabaseUser(session.user));
+      
+      // 게스트 사용자 확인
+      const guestUserStr = localStorage.getItem('guest-user');
+      if (guestUserStr) {
+        try {
+          const parsed = JSON.parse(guestUserStr);
+          if (mounted) {
+            login(parsed);
+            setLoading(false);
+          }
+          return;
+        } catch (e) {
+          console.error('Failed to parse guest user:', e);
+          localStorage.removeItem('guest-user');
+        }
+      }
+      
       if (mounted) setLoading(false);
-    });
+    };
+
+    initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!mounted) return;
         
         if (event === 'SIGNED_IN' && session?.user) {
+          // 실제 로그인 시 게스트 데이터 제거
+          localStorage.removeItem('guest-user');
           login(mapSupabaseUser(session.user));
           setLoading(false);
         } else if (event === 'SIGNED_OUT') {

@@ -2,6 +2,7 @@ import { Plus, MessageSquare, Trash2, MoreHorizontal } from 'lucide-react';
 import { useChatStore } from '@/stores/chatStore';
 import { Button } from '@/components/ui/button';
 import { deleteConversation } from '@/lib/chat';
+import { deleteConversationFromCache } from '@/lib/offline';
 import { GPTList } from '@/components/layout/GPTList';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
@@ -23,7 +24,12 @@ export function Sidebar({ onNewChat }: SidebarProps) {
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     try {
-      await deleteConversation(id);
+      if (user?.isGuest) {
+        // 게스트 모드: IndexedDB에서만 삭제
+        await deleteConversationFromCache(id);
+      } else {
+        await deleteConversation(id);
+      }
       removeConversation(id);
       if (currentConversationId === id) {
         setCurrentConversation(null);

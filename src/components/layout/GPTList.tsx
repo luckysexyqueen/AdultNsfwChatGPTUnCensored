@@ -4,6 +4,8 @@ import { useChatStore } from '@/stores/chatStore';
 import { deleteCustomGPT, createConversation } from '@/lib/chat';
 import { GPTBuilderModal } from '@/components/chat/GPTBuilderModal';
 import { CustomGPT } from '@/types';
+import { useAuth } from '@/hooks/useAuth';
+import { cacheConversation } from '@/lib/offline';
 import { toast } from 'sonner';
 
 interface GPTListProps {
@@ -18,6 +20,7 @@ export function GPTList({ userId }: GPTListProps) {
     setCurrentConversation,
     addConversation,
   } = useChatStore();
+  const { user } = useAuth();
 
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
   const [editingGPT, setEditingGPT] = useState<CustomGPT | null>(null);
@@ -45,15 +48,33 @@ export function GPTList({ userId }: GPTListProps) {
   const handleStartChat = async (gpt: CustomGPT) => {
     try {
       setCurrentGPT(gpt);
-      const newConv = await createConversation(
-        userId,
-        `${gpt.name} 대화`,
-        gpt.id,
-        gpt.system_prompt,
-        gpt.instructions
-      );
-      addConversation(newConv);
-      setCurrentConversation(newConv.id);
+      
+      if (user?.isGuest) {
+        // 게스트 모드: 로컈 대화 생성
+        const newConv = {
+          id: `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          user_id: userId,
+          title: `${gpt.name} 대화`,
+          custom_gpt_id: gpt.id,
+          system_prompt: gpt.system_prompt,
+          instructions: gpt.instructions,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        addConversation(newConv);
+        setCurrentConversation(newConv.id);
+        await cacheConversation(newConv).catch(console.error);
+      } else {
+        const newConv = await createConversation(
+          userId,
+          `${gpt.name} 대화`,
+          gpt.id,
+          gpt.system_prompt,
+          gpt.instructions
+        );
+        addConversation(newConv);
+        setCurrentConversation(newConv.id);
+      }
       toast.success(`${gpt.name}과(와) 대화를 시작합니다`);
     } catch (error) {
       console.error('대화 시작 실패:', error);

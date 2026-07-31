@@ -48,49 +48,97 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
 
   if (!isOpen) return null;
 
+  const isReadableText = (file: File): boolean => {
+    return (
+      file.type.startsWith('text/') ||
+      file.type === 'application/json' ||
+      ['txt', 'md', 'csv', 'json', 'log', 'xml', 'yaml', 'yml', 'ts', 'tsx', 'js', 'jsx', 'py', 'css', 'html', 'sh', 'env', 'ini', 'toml']
+        .some(ext => file.name.toLowerCase().endsWith(`.${ext}`))
+    );
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    // 게스트 모드 체크
+    const isGuestUser = !userId || userId.startsWith('guest-');
+    if (isGuestUser) {
+      toast.error('파일 업로드는 로그인 후 이용 가능합니다');
+      return;
+    }
+
     setLoading(true);
+    const errors: string[] = [];
+
     try {
       const uploaded: CustomGPTFile[] = [];
+
       for (const file of Array.from(files)) {
-        const filePath = `${userId}/${Date.now()}_${file.name}`;
-        const { data, error } = await supabase.storage
-          .from('chat-files')
-          .upload(filePath, file);
+        try {
+          // 파일 이름 안전하게 처리
+          const safeName = file.name.replace(/[^a-zA-Z0-9._\-가-힣]/g, '_');
+          const filePath = `${userId}/gpt-files/${Date.now()}_${safeName}`;
 
-        if (error) throw error;
+          const { data, error } = await supabase.storage
+            .from('chat-files')
+            .upload(filePath, file);
 
-        const { data: { publicUrl } } = supabase.storage
-          .from('chat-files')
-          .getPublicUrl(data.path);
+          if (error) {
+            console.error(`파일 업로드 실패 (${file.name}):`, error);
+            errors.push(`${file.name}: ${error.message}`);
+            continue;
+          }
 
-        // txt 파일인 경우 내용 읽기
-        let fileContent: string | undefined;
-        if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-          fileContent = await file.text();
+          // signed URL 생성 (비공개 버킷이므로)
+          const { data: signedData } = await supabase.storage
+            .from('chat-files')
+            .createSignedUrl(data.path, 60 * 60 * 24 * 365); // 1년
+
+          const fileUrl = signedData?.signedUrl || '';
+
+          // 텍스트 파일은 내용 읽기
+          let fileContent: string | undefined;
+          if (isReadableText(file)) {
+            try {
+              fileContent = await file.text();
+              // 너무 긴 파일은 잘라냄
+              if (fileContent.length > 50000) {
+                fileContent = fileContent.substring(0, 50000) + '\n... (내용 생략됨)';
+              }
+            } catch (readErr) {
+              console.warn(`텍스트 읽기 실패 (${file.name}):`, readErr);
+            }
+          }
+
+          uploaded.push({
+            id: crypto.randomUUID(),
+            custom_gpt_id: '',
+            file_name: file.name,
+            file_url: fileUrl,
+            file_path: data.path,
+            file_size: file.size,
+            mime_type: file.type || 'application/octet-stream',
+            file_content: fileContent,
+            created_at: new Date().toISOString(),
+          });
+        } catch (fileErr: any) {
+          console.error(`파일 처리 오류 (${file.name}):`, fileErr);
+          errors.push(`${file.name}: ${fileErr.message || '알 수 없는 오류'}`);
         }
-
-        // 임시 객체 (GPT 생성 후 DB에 저장)
-        uploaded.push({
-          id: crypto.randomUUID(), // 임시 ID
-          custom_gpt_id: '', // 나중에 설정
-          file_name: file.name,
-          file_url: publicUrl,
-          file_path: data.path,
-          file_size: file.size,
-          mime_type: file.type,
-          file_content: fileContent,
-          created_at: new Date().toISOString(),
-        });
       }
-      setUploadedFiles([...uploadedFiles, ...uploaded]);
-      toast.success(`${uploaded.length}개 파일 업로드 완료`);
-    } catch (error) {
-      console.error('파일 업로드 실패:', error);
-      toast.error('파일 업로드에 실패했습니다');
+
+      if (uploaded.length > 0) {
+        setUploadedFiles([...uploadedFiles, ...uploaded]);
+        toast.success(`${uploaded.length}개 파일 업로드 완료`);
+      }
+      if (errors.length > 0) {
+        console.error('업로드 오류:', errors);
+        toast.error(`${errors.length}개 파일 업로드 실패:\n${errors.slice(0, 3).join('\n')}`);
+      }
+    } catch (error: any) {
+      console.error('파일 업로드 전체 실패:', error);
+      toast.error(`업로드 오류: ${error.message || '알 수 없는 오류'}`);
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -309,7 +357,7 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
             >
               <Upload className="w-6 h-6 text-white/60" />
               <span className="text-white/80">파일을 클릭하여 업로드</span>
-              <span className="text-white/50 text-xs">모든 파일 형식 지원</span>
+              <span className="text-white/50 text-xs">텍스트·코드·이미지·PDF 등 모든 형식 지원</span>
             </button>
             
             {uploadedFiles.length > 0 && (

@@ -11,6 +11,8 @@ import { createConversation, saveMessage, updateConversationTitle, streamChat, f
 import { messageQueue } from '@/lib/offline-queue';
 import { withRetry } from '@/lib/auto-repair';
 import { cacheConversation, cacheMessage } from '@/lib/offline';
+import { supabase } from '@/lib/supabase';
+import { ChatFileAttachment } from '@/types';
 import { toast } from 'sonner';
 
 export function ChatPage() {
@@ -86,21 +88,93 @@ export function ChatPage() {
     scrollToBottom();
   }, [messages, streamingMessage]);
 
-  const handleSend = async (content: string) => {
+  // ─── 파일 처리 헬퍼 ───────────────────────────────────────────
+  const processAttachedFiles = async (
+    files: File[],
+    userId: string,
+    isGuest: boolean
+  ): Promise<ChatFileAttachment[]> => {
+    const attachments: ChatFileAttachment[] = [];
+
+    for (const file of files) {
+      try {
+        const isImg = file.type.startsWith('image/');
+        const isText =
+          file.type.startsWith('text/') ||
+          file.type === 'application/json' ||
+          ['.txt', '.md', '.csv', '.json', '.log', '.xml', '.yaml', '.yml'].some(ext =>
+            file.name.toLowerCase().endsWith(ext)
+          );
+
+        if (isImg) {
+          if (isGuest || !navigator.onLine) {
+            // 게스트 / 오프라인: base64 변환
+            const base64 = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = e => resolve(e.target?.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            attachments.push({ name: file.name, mimeType: file.type, type: 'image', base64 });
+          } else {
+            // 인증 유저: 스토리지 업로드 → signed URL
+            const safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, '_');
+            const path = `${userId}/chat/${Date.now()}_${safeName}`;
+            const { data, error } = await supabase.storage.from('chat-files').upload(path, file);
+
+            if (error) {
+              console.error('이미지 업로드 실패:', error);
+              toast.error(`이미지 업로드 실패: ${file.name}`);
+              continue;
+            }
+
+            const { data: signed } = await supabase.storage
+              .from('chat-files')
+              .createSignedUrl(data.path, 3600);
+
+            if (signed?.signedUrl) {
+              attachments.push({
+                name: file.name,
+                mimeType: file.type,
+                type: 'image',
+                url: signed.signedUrl,
+              });
+            }
+          }
+        } else if (isText) {
+          const textContent = await file.text();
+          attachments.push({ name: file.name, mimeType: file.type, type: 'text', textContent });
+        } else {
+          // 기타 파일 (이름만 전달)
+          attachments.push({ name: file.name, mimeType: file.type, type: 'other' });
+        }
+      } catch (err) {
+        console.error(`파일 처리 오류 (${file.name}):`, err);
+        toast.error(`파일 처리 실패: ${file.name}`);
+      }
+    }
+
+    return attachments;
+  };
+
+  // ─── 메시지 전송 ──────────────────────────────────────────────
+  const handleSend = async (content: string, attachedFiles: File[] = []) => {
     if (!user) {
       toast.error('게스트 모드로 먼저 시작하세요');
       return;
     }
 
+    if (!content.trim() && attachedFiles.length === 0) return;
+
     const isGuest = user.isGuest === true;
 
     // 오프라인 체크
     if (!isOnline) {
-      if (!isGuest && currentConversationId) {
+      if (!isGuest && currentConversationId && attachedFiles.length === 0) {
         messageQueue.addToQueue(currentConversationId, content);
         toast.info('메시지가 큐에 추가되었습니다. 온라인 상태가 되면 자동 전송됩니다.');
       } else {
-        toast.error(isGuest ? '게스트 모드에서는 오프라인 전송이 지원되지 않습니다' : '인터넷에 연결된 후 사용할 수 있습니다');
+        toast.error('오프라인 상태에서는 메시지를 전송할 수 없습니다');
       }
       return;
     }
@@ -124,7 +198,7 @@ export function ChatPage() {
 
       // 새 대화 생성
       if (!conversationId) {
-        const title = content.slice(0, 50);
+        const title = content.slice(0, 50) || (attachedFiles[0]?.name ?? '새 대화');
         if (isGuest) {
           const newConv = {
             id: `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -151,12 +225,24 @@ export function ChatPage() {
         }
       }
 
-      // 사용자 메시지 UI에 표시 (임시 ID)
+      // 파일 처리 (업로드 or base64 변환)
+      let chatAttachments: ChatFileAttachment[] = [];
+      if (attachedFiles.length > 0) {
+        chatAttachments = await processAttachedFiles(attachedFiles, user.id, isGuest);
+      }
+
+      // 사용자 메시지 표시 내용 (UI/DB용)
+      const displayContent =
+        content.trim() ||
+        (chatAttachments.filter(a => a.type === 'image').length > 0
+          ? `📷 이미지 ${chatAttachments.filter(a => a.type === 'image').length}개`
+          : `📎 파일 ${attachedFiles.length}개`);
+
       const userMessage = {
         id: tempUserId,
         conversation_id: conversationId!,
         role: 'user' as const,
-        content,
+        content: displayContent,
         created_at: new Date().toISOString(),
       };
 
@@ -166,26 +252,37 @@ export function ChatPage() {
 
       const chatMessages = [...messages, userMessage];
 
-      // AI 응답 스트리밍
-      const stream = await streamChat(chatMessages, systemPrompt, instructions, currentGPTFiles);
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-
       // 사용자 메시지 저장
       if (isGuest) {
         userMessageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const savedUserMsg = { ...userMessage, id: userMessageId };
         await cacheMessage(savedUserMsg).catch(console.error);
-        // UI 업데이트
-        const updatedMessages = messages.map(m => m.id === tempUserId ? savedUserMsg : m);
-        useChatStore.getState().setMessages([...updatedMessages, savedUserMsg]);
+        useChatStore.getState().setMessages(
+          useChatStore.getState().messages.map(m => m.id === tempUserId ? savedUserMsg : m)
+        );
       } else {
-        const savedMsg = await withRetry(() => saveMessage(conversationId!, 'user', content));
+        const savedMsg = await withRetry(() =>
+          saveMessage(conversationId!, 'user', displayContent)
+        );
         userMessageId = savedMsg.id;
         await cacheMessage(savedMsg).catch(console.error);
+        useChatStore.getState().setMessages(
+          useChatStore.getState().messages.map(m => m.id === tempUserId ? savedMsg : m)
+        );
       }
 
-      // 스트림 읽기
+      // AI 응답 스트리밍
+      const stream = await streamChat(
+        chatMessages,
+        systemPrompt,
+        instructions,
+        currentGPTFiles,
+        chatAttachments.length > 0 ? chatAttachments : undefined,
+        content.trim() // AI에게 전달할 실제 텍스트 (placeholder 아님)
+      );
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+
       let fullResponse = '';
       let buffer = '';
 
@@ -210,7 +307,7 @@ export function ChatPage() {
               fullResponse += delta;
               setStreamingMessage(fullResponse);
             }
-          } catch (e) {
+          } catch {
             // 파싱 에러 무시
           }
         }
@@ -233,7 +330,9 @@ export function ChatPage() {
         addMessage(assistantMessage);
         await cacheMessage(assistantMessage).catch(console.error);
       } else {
-        const savedMsg = await withRetry(() => saveMessage(conversationId!, 'assistant', fullResponse));
+        const savedMsg = await withRetry(() =>
+          saveMessage(conversationId!, 'assistant', fullResponse)
+        );
         assistantMessage.id = savedMsg.id;
         addMessage(assistantMessage);
         await cacheMessage(savedMsg).catch(console.error);
@@ -241,7 +340,7 @@ export function ChatPage() {
 
       // 첫 메시지인 경우 제목 업데이트
       if (messages.length === 0) {
-        const title = content.slice(0, 50);
+        const title = content.slice(0, 50) || displayContent.slice(0, 50);
         const updatedConv = { title, updated_at: new Date().toISOString() };
         if (!isGuest) {
           await withRetry(() => updateConversationTitle(conversationId!, title)).catch(console.error);
@@ -258,17 +357,16 @@ export function ChatPage() {
     } catch (error: any) {
       console.error('메시지 전송 실패:', error);
 
-      // 상태 초기화
       setIsStreaming(false);
       setStreamingMessage('');
 
       // 임시 메시지 제거 (저장되지 않은 경우)
       if (!userMessageId) {
-        const filteredMessages = messages.filter(m => m.id !== tempUserId);
-        useChatStore.getState().setMessages(filteredMessages);
+        useChatStore.getState().setMessages(
+          useChatStore.getState().messages.filter(m => m.id !== tempUserId)
+        );
       }
 
-      // 사용자 친화적 에러 메시지
       let errorMsg = '메시지 전송에 실패했습니다';
       if (error?.message?.includes('AI')) {
         errorMsg = error.message;
@@ -276,8 +374,10 @@ export function ChatPage() {
         errorMsg = '네트워크 연결을 확인해주세요';
       } else if (error?.message?.includes('인증') || error?.message?.includes('auth')) {
         errorMsg = '인증에 실패했습니다. 다시 로그인해주세요';
+      } else if (error?.message) {
+        errorMsg = error.message;
       }
-      
+
       toast.error(errorMsg);
     }
   };
