@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Send, Paperclip, X, FileText, Image } from 'lucide-react';
 
 interface LocalFile {
@@ -25,6 +25,14 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [attached, setAttached] = useState<LocalFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // 언마운트 시 Object URL 누수 방지
+  const attachedRef = useRef<LocalFile[]>([]);
+  useEffect(() => { attachedRef.current = attached; }, [attached]);
+  useEffect(() => {
+    return () => {
+      attachedRef.current.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+    };
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);

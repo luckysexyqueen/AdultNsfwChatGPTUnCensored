@@ -16,6 +16,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   created_at: string;
+  /** localforage에 저장된 첨부 파일 ID 목록 (DB에는 저장 안됨, 클라이언트 전용) */
+  localFileIds?: string[];
 }
 
 export interface CustomGPT {
@@ -68,4 +70,5 @@ export interface ChatFileAttachment {
   url?: string;         // 스토리지 signed URL
   base64?: string;      // 게스트 모드용 base64 data URL
   textContent?: string; // 텍스트 파일 내용
+  localId?: string;     // localforage에 저장된 파일 ID
 }
