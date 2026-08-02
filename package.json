@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "npm run dev",
-    "build": "echo 'No build step needed for plain HTML",
+    "build": "echo 'echo No build needed",
     "build:dev": "npm run build --mode development",
     "lint": "eslint .",
     "preview": " preview"
