@@ -1,0 +1,31 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ "patch-6" ]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        uses: dudeofawesome/npm-install@v1.0.0
+        with:
+          package-dir-path: .
+
+      - name: Npm build to gh-pages
+        uses: diy-pwa/npm-build-2-gh-pages@v1.13
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          dist_folder: .
