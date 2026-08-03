@@ -1,0 +1,4 @@
+- name: build-npm-action
+  # You may pin to the exact commit or the version.
+  # uses: ankitasen-ubmainz/build-npm-action@933de398871bd9906e82336d74c730ae222d6fbe
+  uses: ankitasen-ubmainz/build-npm-action@v0.2
