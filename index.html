@@ -193,6 +193,10 @@
 
       /* ===== SIDEBAR ===== */
       #sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
         width: 260px;
         min-width: 260px;
         background: var(--bg2);
@@ -201,6 +205,48 @@
         flex-direction: column;
         height: 100vh;
         overflow: hidden;
+        z-index: 300;
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 2px 0 24px rgba(0, 0, 0, 0.4);
+      }
+      #sidebar.open {
+        transform: translateX(0);
+      }
+      #sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 290;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      #sidebar-backdrop.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .sidebar-toggle-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: #fff;
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .sidebar-toggle-btn:hover {
+        background: var(--bg4);
+      }
+      .sidebar-toggle-btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
       }
       .sidebar-top {
         padding: 12px;
@@ -952,7 +998,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 200;
+        z-index: 400;
         padding: 16px;
       }
       .modal-overlay.hidden {
@@ -1680,6 +1726,8 @@
         dropdownOpen: false,
         // browser panel open (split view with chat)
         browserOpen: false,
+        // sidebar drawer open
+        sidebarOpen: false,
       };
 
       let renderScheduled = false;
@@ -2458,8 +2506,9 @@
       // ── MAIN LAYOUT ──────────────────────────────────────────────
       function renderMain() {
         app.innerHTML = `
+  <div id="sidebar-backdrop" class="${S.sidebarOpen ? "open" : ""}"></div>
   <div id="main-layout">
-    <div id="sidebar">
+    <div id="sidebar" class="${S.sidebarOpen ? "open" : ""}">
       <div class="sidebar-top" style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn-new-chat" id="btn-new-chat">
           ${iconSvg("Plus", 16)} 새 채팅
@@ -2472,9 +2521,11 @@
     </div>
     <div id="content-area">
       <div id="header">
-        <div class="header-title">
-          ${iconSvg("MessageSquare", 20)}
-          AI Chat
+        <div class="header-title" style="display:flex;align-items:center;gap:12px;">
+          <button class="sidebar-toggle-btn ${S.sidebarOpen ? "active" : ""}" id="btn-toggle-sidebar" title="사이드바 열기/닫기">
+            ☰
+          </button>
+          <span style="display:flex;align-items:center;gap:10px;">${iconSvg("MessageSquare", 20)} AI Chat</span>
         </div>
         <div class="header-right">
           <button class="browser-toggle-btn ${S.browserOpen ? "active" : ""}" id="btn-open-browser" title="브라우저 열기/닫기">
@@ -2961,6 +3012,14 @@
           else openBrowserOverlay();
         });
 
+        // Sidebar drawer toggle (slide open/close)
+        document.getElementById("btn-toggle-sidebar")?.addEventListener("click", () => {
+          setState({ sidebarOpen: !S.sidebarOpen });
+        });
+        document.getElementById("sidebar-backdrop")?.addEventListener("click", () => {
+          setState({ sidebarOpen: false });
+        });
+
         // User dropdown
         document.getElementById("user-btn")?.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -3070,6 +3129,7 @@
         updateHeader();
         updateFilePreviews();
         updateGPTBanner();
+        updateSidebarDrawer();
         if (S.gptBuilderOpen && !document.getElementById("gpt-modal")?.classList.contains("hidden") === false)
           renderGPTModal();
       }
@@ -3091,8 +3151,6 @@
         renderFilePreviews();
       }
       function updateHeader() {
-        const tb = document.querySelector(".header-title");
-        if (tb) tb.innerHTML = `${iconSvg("MessageSquare", 20)} AI Chat`;
         const dd = document.getElementById("user-dropdown");
         if (dd) {
           dd.className = `dropdown ${S.dropdownOpen ? "open" : ""}`;
@@ -3101,6 +3159,16 @@
         if (bb) {
           bb.className = `browser-toggle-btn ${S.browserOpen ? "active" : ""}`;
         }
+        const sb2 = document.getElementById("btn-toggle-sidebar");
+        if (sb2) {
+          sb2.className = `sidebar-toggle-btn ${S.sidebarOpen ? "active" : ""}`;
+        }
+      }
+      function updateSidebarDrawer() {
+        const sidebar = document.getElementById("sidebar");
+        if (sidebar) sidebar.className = S.sidebarOpen ? "open" : "";
+        const backdrop = document.getElementById("sidebar-backdrop");
+        if (backdrop) backdrop.className = S.sidebarOpen ? "open" : "";
       }
       function updateGPTBanner() {
         const b = document.getElementById("gpt-banner");
