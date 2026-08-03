@@ -11,6 +11,9 @@
     <link rel="apple-touch-icon" href="/icon.png" />
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
+         파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
+    <script src="/env-config.js" onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"></script>
     <!-- LocalForage -->
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
@@ -1128,6 +1131,23 @@
           z-index: 50;
         }
       }
+
+      /* ===== SUPABASE ANON KEY 최초 실행 입력 모달 (자동 설정 기능) ===== */
+      #sb-key-overlay {
+        z-index: 10000; /* #loading-screen(999)보다 위에 떠야 함 */
+      }
+      #sb-key-overlay .form-hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: -2px 0 10px;
+        line-height: 1.5;
+      }
+      #sb-key-overlay .sb-key-error {
+        font-size: 12px;
+        color: var(--danger);
+        min-height: 16px;
+        margin: 4px 0 2px;
+      }
     </style>
   </head>
   <body>
@@ -1177,7 +1197,8 @@
       // 8초 안에 부팅이 끝나지 않으면(로딩 화면이 안 사라지면) 강제로 에러 처리
       window.__bootWatchdog = setTimeout(function () {
         var ls = document.getElementById("loading-screen");
-        if (ls && !ls.classList.contains("hidden") && !window.__bootFailed) {
+        var waitingForKeyInput = document.getElementById("sb-key-overlay");
+        if (ls && !ls.classList.contains("hidden") && !window.__bootFailed && !waitingForKeyInput) {
           window.__bootFailed = true;
           ls.innerHTML =
             '<div style="text-align:center;padding:24px;color:#fff;font-family:-apple-system,sans-serif;">' +
@@ -1189,64 +1210,170 @@
       }, 12000);
 
       // ═══════════════════════════════════════════════════════════════
-      // ⚙️  설정 — Supabase URL & Anon Key를 여기에 입력하세요
-      //    Anon Key는 .env 파일의 VITE_SUPABASE_ANON_KEY 값을 사용하세요
+      // ⚙️  설정 — Supabase URL
       // ═══════════════════════════════════════════════════════════════
       const SUPABASE_URL = "https://shtixmaykwundutbshti.backend.onspace.ai";
-      // 아래 큰따옴표 사이에 Supabase Anon Key를 직접 붙여넣으세요.
-      const SUPABASE_ANON_KEY = "";
-
       const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/chat-stream`;
 
       // ═══════════════════════════════════════════════════════════════
-      // 🗄️  SUPABASE CLIENT (CDN 로딩 실패에 대비한 방어적 초기화)
+      // 🔑  SUPABASE_ANON_KEY 자동 설정 (하드코딩 불필요)
+      //     우선순위: ① /env-config.js  (.env의 VITE_SUPABASE_ANON_KEY → generate-env-config.js가 빌드 시 생성)
+      //              ② localStorage    (이 기기에 이전에 저장된 값)
+      //              ③ 최초 실행 입력폼 (제출 시 localStorage에 저장 → 다음부터는 자동으로 재사용)
+      // ═══════════════════════════════════════════════════════════════
+      const SB_KEY_STORAGE_NAME = "SUPABASE_ANON_KEY";
+
+      function getEnvAnonKey() {
+        try {
+          return (window.__ENV__ && window.__ENV__.SUPABASE_ANON_KEY) || "";
+        } catch (e) {
+          return "";
+        }
+      }
+
+      function getSavedAnonKey() {
+        try {
+          return localStorage.getItem(SB_KEY_STORAGE_NAME) || "";
+        } catch (e) {
+          return "";
+        }
+      }
+
+      function saveAnonKey(key) {
+        try {
+          localStorage.setItem(SB_KEY_STORAGE_NAME, key);
+        } catch (e) {
+          console.warn("localStorage 저장 실패:", e);
+        }
+      }
+
+      function askAnonKeyViaModal() {
+        return new Promise((resolve) => {
+          const overlay = document.createElement("div");
+          overlay.id = "sb-key-overlay";
+          overlay.className = "modal-overlay";
+          overlay.innerHTML = `
+            <div class="modal-box" style="max-width:420px;">
+              <div class="modal-header">
+                <div class="modal-title">Supabase 연결 설정</div>
+              </div>
+              <div class="modal-body">
+                <div class="form-group">
+                  <label class="form-label">Supabase Anon Key<span class="req">*</span></label>
+                  <div class="form-hint">최초 1회만 입력하면 이 기기에 저장되어 다음부터 자동으로 사용됩니다.</div>
+                  <input class="form-input" id="sb-key-input" type="text" placeholder="eyJhbGciOi..." autocomplete="off" spellcheck="false" />
+                  <div class="sb-key-error" id="sb-key-error"></div>
+                </div>
+                <button class="auth-btn primary" id="sb-key-submit">저장하고 시작하기</button>
+              </div>
+            </div>`;
+          document.body.appendChild(overlay);
+
+          const input = overlay.querySelector("#sb-key-input");
+          const errEl = overlay.querySelector("#sb-key-error");
+
+          function submit() {
+            const val = input.value.trim();
+            if (!val) {
+              errEl.textContent = "Anon Key를 입력해주세요.";
+              input.focus();
+              return;
+            }
+            saveAnonKey(val);
+            overlay.remove();
+            resolve(val);
+          }
+
+          overlay.querySelector("#sb-key-submit").addEventListener("click", submit);
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") submit();
+          });
+          setTimeout(() => input.focus(), 50);
+        });
+      }
+
+      async function resolveAnonKey() {
+        const fromEnv = getEnvAnonKey();
+        if (fromEnv) return fromEnv;
+        const fromStorage = getSavedAnonKey();
+        if (fromStorage) return fromStorage;
+        return await askAnonKeyViaModal();
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // 🗄️  SUPABASE CLIENT (CDN 로딩 실패 + 키 미설정에 대비한 방어적 초기화)
+      //     anon key 해석이 끝날 때까지 기다린 뒤 클라이언트를 생성한다.
+      //     BOOT 시퀀스는 아래 supabaseReady를 await한 뒤 진행된다.
       // ═══════════════════════════════════════════════════════════════
       let sb = null;
-      try {
-        if (typeof supabase === "undefined" || !supabase.createClient) {
-          throw new Error("Supabase SDK가 로드되지 않았습니다 (CDN 차단/네트워크 문제 가능성)");
-        }
-        sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: { persistSession: true, autoRefreshToken: true },
-        });
-      } catch (e) {
-        console.error("Supabase client init failed:", e);
-        // sb가 null이면 아래 모든 sb.* 호출이 실패하므로,
-        // 최소한의 no-op 더미 클라이언트로 대체해 스크립트 전체가 죽지 않게 한다.
-        const alwaysFail = () => Promise.resolve({ data: null, error: new Error("Supabase unavailable") });
-        const chain = () => {
-          const obj = {
-            select: () => chain(),
-            eq: () => chain(),
-            or: () => chain(),
-            order: () => chain(),
-            insert: () => chain(),
-            update: () => chain(),
-            delete: () => chain(),
-            single: () => alwaysFail(),
-            then: (resolve) => resolve({ data: [], error: new Error("Supabase unavailable") }),
+      const supabaseReady = (async () => {
+        try {
+          const anonKey = await resolveAnonKey();
+          if (typeof supabase === "undefined" || !supabase.createClient) {
+            throw new Error("Supabase SDK가 로드되지 않았습니다 (CDN 차단/네트워크 문제 가능성)");
+          }
+          sb = supabase.createClient(SUPABASE_URL, anonKey, {
+            auth: { persistSession: true, autoRefreshToken: true },
+          });
+        } catch (e) {
+          console.error("Supabase client init failed:", e);
+          // sb가 null이면 아래 모든 sb.* 호출이 실패하므로,
+          // 최소한의 no-op 더미 클라이언트로 대체해 스크립트 전체가 죽지 않게 한다.
+          const alwaysFail = () => Promise.resolve({ data: null, error: new Error("Supabase unavailable") });
+          const chain = () => {
+            const obj = {
+              select: () => chain(),
+              eq: () => chain(),
+              or: () => chain(),
+              order: () => chain(),
+              insert: () => chain(),
+              update: () => chain(),
+              delete: () => chain(),
+              single: () => alwaysFail(),
+              then: (resolve) => resolve({ data: [], error: new Error("Supabase unavailable") }),
+            };
+            return obj;
           };
-          return obj;
-        };
-        sb = {
-          auth: {
-            getSession: () => Promise.resolve({ data: { session: null } }),
-            onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-            signInWithPassword: () => alwaysFail(),
-            signInWithOtp: () => alwaysFail(),
-            verifyOtp: () => alwaysFail(),
-            updateUser: () => alwaysFail(),
-            signOut: () => Promise.resolve({ error: null }),
-          },
-          from: () => chain(),
-          storage: {
-            from: () => ({
-              upload: () => alwaysFail(),
-              createSignedUrl: () => alwaysFail(),
-            }),
-          },
-        };
-      }
+          sb = {
+            auth: {
+              getSession: () => Promise.resolve({ data: { session: null } }),
+              onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+              signInWithPassword: () => alwaysFail(),
+              signInWithOtp: () => alwaysFail(),
+              verifyOtp: () => alwaysFail(),
+              updateUser: () => alwaysFail(),
+              signOut: () => Promise.resolve({ error: null }),
+            },
+            from: () => chain(),
+            storage: {
+              from: () => ({
+                upload: () => alwaysFail(),
+                createSignedUrl: () => alwaysFail(),
+              }),
+            },
+          };
+        }
+
+        // (기존에 최상위에서 바로 등록되던 인증 상태 리스너 — sb가 준비된 직후로 이동)
+        sb.auth.onAuthStateChange((event, session) => {
+          if (event === "SIGNED_IN" && session?.user) {
+            setState({ user: mapUser(session.user), view: "chat" });
+            loadUserData();
+          } else if (event === "SIGNED_OUT") {
+            setState({
+              user: null,
+              view: "auth",
+              conversations: [],
+              messages: [],
+              customGPTs: [],
+              currentConvId: null,
+              currentGPT: null,
+            });
+          } else if (event === "TOKEN_REFRESHED" && session?.user) {
+            setState({ user: mapUser(session.user) });
+          }
+        });
+      })();
 
       // ═══════════════════════════════════════════════════════════════
       // 📦  LOCALFORAGE STORES (파일 영구 저장) — CDN 실패 대비 폴백 포함
@@ -1542,25 +1669,7 @@
         }
         setState({ loading: false, view: "auth" });
       }
-
-      sb.auth.onAuthStateChange((event, session) => {
-        if (event === "SIGNED_IN" && session?.user) {
-          setState({ user: mapUser(session.user), view: "chat" });
-          loadUserData();
-        } else if (event === "SIGNED_OUT") {
-          setState({
-            user: null,
-            view: "auth",
-            conversations: [],
-            messages: [],
-            customGPTs: [],
-            currentConvId: null,
-            currentGPT: null,
-          });
-        } else if (event === "TOKEN_REFRESHED" && session?.user) {
-          setState({ user: mapUser(session.user) });
-        }
-      });
+      // (인증 상태 리스너는 supabaseReady 안, sb 생성 직후로 이동되었습니다)
 
       async function doLogout() {
         await sb.auth.signOut();
@@ -2931,41 +3040,60 @@
         }
         brow.classList.add("open");
       }
-
       function closeBrowserOverlay() {
-        const brow = document.getElementById("brow");
-        if (brow) brow.classList.remove("open");
+        document.getElementById("brow")?.classList.remove("open");
       }
-
-      // Browser overlay button bindings
-      document.getElementById("brow-back")?.addEventListener("click", closeBrowserOverlay);
-      document.getElementById("brow-reload")?.addEventListener("click", () => {
-        const iframe = document.getElementById("brow-iframe");
-        if (iframe) iframe.src = iframe.src;
-      });
-      document.getElementById("brow-newtab")?.addEventListener("click", () => {
-        const iframe = document.getElementById("brow-iframe");
-        const url = iframe?.src;
-        if (url && url !== "about:blank") window.open(url, "_blank");
-      });
+      function bindBrowserOverlay() {
+        document.getElementById("brow-back")?.addEventListener("click", closeBrowserOverlay);
+        document.getElementById("brow-reload")?.addEventListener("click", () => {
+          const iframe = document.getElementById("brow-iframe");
+          if (iframe && iframe.src && iframe.src !== "about:blank") {
+            iframe.src = iframe.src;
+          }
+        });
+        document.getElementById("brow-newtab")?.addEventListener("click", () => {
+          window.open(BROWSER_HOME_URL, "_blank", "noopener,noreferrer");
+        });
+      }
 
       // ═══════════════════════════════════════════════════════════════
       // 🚀  BOOT
       // ═══════════════════════════════════════════════════════════════
-      (async function boot() {
+      (async () => {
+        await supabaseReady; // anon key 해석 + Supabase 클라이언트 준비를 기다린다 (필요 시 입력폼 대기)
+        bindBrowserOverlay();
         try {
-          clearTimeout(window.__bootWatchdog);
-          await initAuth();
+          try {
+            await Promise.all([
+              blobStore.ready(),
+              metaStore.ready(),
+              msgFileStore.ready(),
+              convStore.ready(),
+              msgStore.ready(),
+            ]);
+          } catch (e) {
+            console.warn("LocalForage init:", e);
+          }
+
+          await withTimeout(initAuth(), 6000, undefined);
           if (S.user) {
-            await loadUserData();
+            await withTimeout(loadUserData(), 8000, undefined);
           }
         } catch (e) {
-          console.error("boot error:", e);
-          setState({ loading: false, view: "auth" });
+          console.warn("Boot error:", e);
         } finally {
-          clearTimeout(window.__bootWatchdog);
+          if (S.loading) setState({ loading: false, view: S.user ? "chat" : "auth" });
+          render();
+          document.getElementById("loading-screen").classList.add("hidden");
         }
       })();
+
+      // PWA Service Worker
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch(() => {});
+        });
+      }
     </script>
   </body>
 </html>
