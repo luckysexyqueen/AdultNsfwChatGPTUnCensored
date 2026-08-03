@@ -64,28 +64,39 @@
         --danger: #ef4444;
       }
 
-      /* ── 브라우저 패널 (채팅 화면과 항상 함께 보이는 분할 패널) ── */
+      /* ── 브라우저 패널 (채팅 화면과 항상 함께 보이는 분할 패널) ──
+         portrait(세로): 위/아래 반반, landscape(가로): 좌/우 반반 */
       #brow {
         flex-shrink: 0;
+        display: flex;
+        flex-direction: column; /* portrait 기본값: 내용 위, 핸들 아래 */
         width: 100%;
         height: 0;
+        min-width: 0;
         min-height: 0;
-        display: flex;
-        flex-direction: column;
         background: #0a0b0f;
         overflow: hidden;
         transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
       }
       #brow.open {
-        height: 42vh;
+        height: 50vh;
         border-bottom: 1px solid #1e1f2e;
       }
       #brow.resizing {
         transition: none;
       }
+      #brow-content {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
       #brow-resize {
         flex-shrink: 0;
         height: 14px;
+        width: 100%;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -99,6 +110,36 @@
         height: 4px;
         border-radius: 2px;
         background: #3a3c4a;
+      }
+      /* landscape(가로 모드): 채팅과 브라우저를 좌우로 반반 배치 */
+      @media (orientation: landscape) {
+        body {
+          flex-direction: row;
+        }
+        #app {
+          min-width: 0;
+        }
+        #brow {
+          flex-direction: row; /* 내용 왼쪽, 핸들 오른쪽 */
+          width: 0;
+          height: 100%;
+          transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #brow.open {
+          width: 50vw;
+          height: 100%;
+          border-bottom: none;
+          border-right: 1px solid #1e1f2e;
+        }
+        #brow-resize {
+          width: 14px;
+          height: 100%;
+          cursor: col-resize;
+        }
+        #brow-resize::after {
+          width: 4px;
+          height: 40px;
+        }
       }
       #brow-tb {
         display: flex;
@@ -1205,21 +1246,23 @@
 
     <!-- ── 브라우저 패널 (항상 채팅 화면과 함께 표시) ── -->
     <div id="brow">
-      <div id="brow-tb">
-        <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
-          <i class="fa-solid fa-xmark"></i>&nbsp;닫기
-        </button>
-        <div id="brow-url">
-          <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
+      <div id="brow-content">
+        <div id="brow-tb">
+          <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
+            <i class="fa-solid fa-xmark"></i>&nbsp;닫기
+          </button>
+          <div id="brow-url">
+            <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
+          </div>
+          <button id="brow-reload" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새로고침">
+            <i class="fa-solid fa-rotate-right"></i>
+          </button>
+          <button id="brow-newtab" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새 탭에서 열기">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+          </button>
         </div>
-        <button id="brow-reload" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새로고침">
-          <i class="fa-solid fa-rotate-right"></i>
-        </button>
-        <button id="brow-newtab" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새 탭에서 열기">
-          <i class="fa-solid fa-arrow-up-right-from-square"></i>
-        </button>
+        <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
       </div>
-      <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
       <div id="brow-resize" title="드래그하여 크기 조절"></div>
     </div>
 
@@ -3102,10 +3145,14 @@
       function closeBrowserOverlay() {
         const brow = document.getElementById("brow");
         brow?.classList.remove("open");
-        // reset any manually-dragged height so next open uses the default split
-        if (brow) brow.style.height = "";
+        // 수동으로 조절한 크기 초기화 → 다음에 열 때 기본 반반 비율로 시작
+        if (brow) {
+          brow.style.height = "";
+          brow.style.width = "";
+        }
         setState({ browserOpen: false });
       }
+      const browserOrientationQuery = window.matchMedia("(orientation: landscape)");
       function bindBrowserOverlay() {
         document.getElementById("brow-back")?.addEventListener("click", closeBrowserOverlay);
         document.getElementById("brow-reload")?.addEventListener("click", () => {
@@ -3118,20 +3165,37 @@
           window.open(BROWSER_HOME_URL, "_blank", "noopener,noreferrer");
         });
         bindBrowserResize();
+        // 화면 회전 시 수동 조절값을 지워서 세로=상하 반반 / 가로=좌우 반반 기본값으로 재적용
+        browserOrientationQuery.addEventListener("change", () => {
+          const brow = document.getElementById("brow");
+          if (brow) {
+            brow.style.height = "";
+            brow.style.width = "";
+          }
+        });
       }
 
       // 드래그로 브라우저 패널 / 채팅 화면 분할 비율 조절
+      // portrait(세로) = 위아래 드래그로 높이 조절, landscape(가로) = 좌우 드래그로 너비 조절
       function bindBrowserResize() {
         const handle = document.getElementById("brow-resize");
         const brow = document.getElementById("brow");
         if (!handle || !brow) return;
         let dragging = false;
-        const applyHeight = (clientY) => {
-          const vh = window.innerHeight;
-          const min = vh * 0.18;
-          const max = vh * 0.8;
-          const h = Math.max(min, Math.min(max, clientY));
-          brow.style.height = h + "px";
+        const apply = (clientX, clientY) => {
+          if (browserOrientationQuery.matches) {
+            const vw = window.innerWidth;
+            const min = vw * 0.2;
+            const max = vw * 0.8;
+            const w = Math.max(min, Math.min(max, clientX));
+            brow.style.width = w + "px";
+          } else {
+            const vh = window.innerHeight;
+            const min = vh * 0.18;
+            const max = vh * 0.8;
+            const h = Math.max(min, Math.min(max, clientY));
+            brow.style.height = h + "px";
+          }
         };
         handle.addEventListener("pointerdown", (e) => {
           if (!brow.classList.contains("open")) return;
@@ -3141,7 +3205,7 @@
         });
         handle.addEventListener("pointermove", (e) => {
           if (!dragging) return;
-          applyHeight(e.clientY);
+          apply(e.clientX, e.clientY);
         });
         const endDrag = () => {
           if (!dragging) return;
