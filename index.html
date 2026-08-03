@@ -15,6 +15,8 @@
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- Font Awesome (브라우저 오버레이 아이콘용) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
     <style>
       /* ===== RESET & BASE ===== */
@@ -97,27 +99,7 @@
         border: none;
       }
 
-      <!-- ── 브라우저 오버레이 ── -->
-<div id="brow">
-  <div id="brow-tb">
-    <button id="brow-back" class="btn-p px-3 py-1.5 text-xs" style="border-radius:7px;min-height:34px;">
-      <i class="fa-solid fa-arrow-left"></i> 돌아가기
-    </button>
-    <div id="brow-url">
-      <i class="fa-solid fa-lock text-green-400 mr-1 text-xs"></i>GoldFireDragonBrowser
-    </div>
-    <button id="brow-reload" class="btn-g w-8 h-8 text-xs" title="새로고침">
-      <i class="fa-solid fa-rotate-right"></i>
-    </button>
-    <button id="brow-newtab" class="btn-g w-8 h-8 text-xs" title="새 탭에서 열기">
-      <i class="fa-solid fa-arrow-up-right-from-square"></i>
-    </button>
-  </div>
-  <iframe id="brow-iframe" src="https://luckysexyqueen.github.io/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260802/" title="브라우저" allowfullscreen="" style="flex:1;width:100%;border:none;">
-  </iframe>
-</div>
-
-    /* ===== SCROLLBAR ===== */
+      /* ===== SCROLLBAR ===== */
     ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
@@ -1153,47 +1135,155 @@
     <div id="toast-container"></div>
     <div id="app"></div>
 
+    <!-- ── 브라우저 오버레이 ── -->
+    <div id="brow">
+      <div id="brow-tb">
+        <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
+          <i class="fa-solid fa-arrow-left"></i>&nbsp;돌아가기
+        </button>
+        <div id="brow-url">
+          <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
+        </div>
+        <button id="brow-reload" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새로고침">
+          <i class="fa-solid fa-rotate-right"></i>
+        </button>
+        <button id="brow-newtab" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새 탭에서 열기">
+          <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        </button>
+      </div>
+      <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
+    </div>
+
     <script>
+      // ═══════════════════════════════════════════════════════════════
+      // 🛡️  최우선 안전망 — CDN 로딩 실패 등 어떤 예외가 나도
+      //     로딩 화면이 무한정 떠 있지 않도록 강제로 처리한다.
+      // ═══════════════════════════════════════════════════════════════
+      window.__bootFailed = false;
+      window.addEventListener("error", function (e) {
+        if (window.__bootFailed) return;
+        window.__bootFailed = true;
+        console.error("Boot-level error:", e.error || e.message);
+        var ls = document.getElementById("loading-screen");
+        if (ls) {
+          ls.innerHTML =
+            '<div style="text-align:center;padding:24px;color:#fff;font-family:-apple-system,sans-serif;">' +
+            '<div style="font-size:16px;font-weight:600;margin-bottom:8px;">앱을 불러오는 중 문제가 발생했습니다</div>' +
+            '<div style="font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:16px;">네트워크 연결을 확인하고 새로고침해주세요.</div>' +
+            '<button onclick="location.reload()" style="padding:10px 20px;background:#10a37f;border:none;border-radius:8px;color:#fff;font-size:14px;cursor:pointer;">새로고침</button>' +
+            "</div>";
+        }
+      });
+      // 8초 안에 부팅이 끝나지 않으면(로딩 화면이 안 사라지면) 강제로 에러 처리
+      window.__bootWatchdog = setTimeout(function () {
+        var ls = document.getElementById("loading-screen");
+        if (ls && !ls.classList.contains("hidden") && !window.__bootFailed) {
+          window.__bootFailed = true;
+          ls.innerHTML =
+            '<div style="text-align:center;padding:24px;color:#fff;font-family:-apple-system,sans-serif;">' +
+            '<div style="font-size:16px;font-weight:600;margin-bottom:8px;">로딩이 너무 오래 걸립니다</div>' +
+            '<div style="font-size:13px;color:rgba(255,255,255,0.6);margin-bottom:16px;">네트워크 연결을 확인하고 새로고침해주세요.</div>' +
+            '<button onclick="location.reload()" style="padding:10px 20px;background:#10a37f;border:none;border-radius:8px;color:#fff;font-size:14px;cursor:pointer;">새로고침</button>' +
+            "</div>";
+        }
+      }, 12000);
+
       // ═══════════════════════════════════════════════════════════════
       // ⚙️  설정 — Supabase URL & Anon Key를 여기에 입력하세요
       //    Anon Key는 .env 파일의 VITE_SUPABASE_ANON_KEY 값을 사용하세요
       // ═══════════════════════════════════════════════════════════════
       const SUPABASE_URL = "https://shtixmaykwundutbshti.backend.onspace.ai";
-      const SUPABASE_ANON_KEY = (function () {
-        // Vite 프로젝트의 .env 파일에서 VITE_SUPABASE_ANON_KEY를 복사하여 아래에 붙여넣으세요
-        // 예: return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
-        const stored = localStorage.getItem("_sb_anon_key");
-        if (stored) return stored;
-        const key = prompt(
-          "🔑 Supabase Anon Key를 입력하세요\n\n" +
-            "(.env 파일의 VITE_SUPABASE_ANON_KEY 값)\n" +
-            "한 번 입력하면 저장됩니다.",
-        );
-        if (key) {
-          localStorage.setItem("_sb_anon_key", key);
-          return key;
-        }
-        return "";
-      })();
+      // 아래 큰따옴표 사이에 Supabase Anon Key를 직접 붙여넣으세요.
+      const SUPABASE_ANON_KEY = "";
 
       const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/chat-stream`;
 
       // ═══════════════════════════════════════════════════════════════
-      // 🗄️  SUPABASE CLIENT
+      // 🗄️  SUPABASE CLIENT (CDN 로딩 실패에 대비한 방어적 초기화)
       // ═══════════════════════════════════════════════════════════════
-      const { createClient } = supabase;
-      const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { persistSession: true, autoRefreshToken: true },
-      });
+      let sb = null;
+      try {
+        if (typeof supabase === "undefined" || !supabase.createClient) {
+          throw new Error("Supabase SDK가 로드되지 않았습니다 (CDN 차단/네트워크 문제 가능성)");
+        }
+        sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+          auth: { persistSession: true, autoRefreshToken: true },
+        });
+      } catch (e) {
+        console.error("Supabase client init failed:", e);
+        // sb가 null이면 아래 모든 sb.* 호출이 실패하므로,
+        // 최소한의 no-op 더미 클라이언트로 대체해 스크립트 전체가 죽지 않게 한다.
+        const alwaysFail = () => Promise.resolve({ data: null, error: new Error("Supabase unavailable") });
+        const chain = () => {
+          const obj = {
+            select: () => chain(),
+            eq: () => chain(),
+            or: () => chain(),
+            order: () => chain(),
+            insert: () => chain(),
+            update: () => chain(),
+            delete: () => chain(),
+            single: () => alwaysFail(),
+            then: (resolve) => resolve({ data: [], error: new Error("Supabase unavailable") }),
+          };
+          return obj;
+        };
+        sb = {
+          auth: {
+            getSession: () => Promise.resolve({ data: { session: null } }),
+            onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+            signInWithPassword: () => alwaysFail(),
+            signInWithOtp: () => alwaysFail(),
+            verifyOtp: () => alwaysFail(),
+            updateUser: () => alwaysFail(),
+            signOut: () => Promise.resolve({ error: null }),
+          },
+          from: () => chain(),
+          storage: {
+            from: () => ({
+              upload: () => alwaysFail(),
+              createSignedUrl: () => alwaysFail(),
+            }),
+          },
+        };
+      }
 
       // ═══════════════════════════════════════════════════════════════
-      // 📦  LOCALFORAGE STORES (파일 영구 저장)
+      // 📦  LOCALFORAGE STORES (파일 영구 저장) — CDN 실패 대비 폴백 포함
       // ═══════════════════════════════════════════════════════════════
-      const blobStore = localforage.createInstance({ name: "aichat-files", storeName: "blobs" });
-      const metaStore = localforage.createInstance({ name: "aichat-files", storeName: "meta" });
-      const msgFileStore = localforage.createInstance({ name: "aichat-files", storeName: "msg_files" });
-      const convStore = localforage.createInstance({ name: "aichat-offline", storeName: "conversations" });
-      const msgStore = localforage.createInstance({ name: "aichat-offline", storeName: "messages" });
+      function makeStore(opts) {
+        if (typeof localforage !== "undefined" && localforage.createInstance) {
+          return localforage.createInstance(opts);
+        }
+        // localforage 로드 실패 시: 메모리 기반 더미 스토어로 대체 (새로고침 시 사라짐)
+        const mem = new Map();
+        return {
+          async getItem(k) {
+            return mem.has(k) ? mem.get(k) : null;
+          },
+          async setItem(k, v) {
+            mem.set(k, v);
+            return v;
+          },
+          async removeItem(k) {
+            mem.delete(k);
+          },
+          async iterate(cb) {
+            let i = 0;
+            for (const [k, v] of mem.entries()) {
+              cb(v, k, ++i);
+            }
+          },
+          async ready() {
+            return true;
+          },
+        };
+      }
+      const blobStore = makeStore({ name: "aichat-files", storeName: "blobs" });
+      const metaStore = makeStore({ name: "aichat-files", storeName: "meta" });
+      const msgFileStore = makeStore({ name: "aichat-files", storeName: "msg_files" });
+      const convStore = makeStore({ name: "aichat-offline", storeName: "conversations" });
+      const msgStore = makeStore({ name: "aichat-offline", storeName: "messages" });
 
       const TEXT_EXTS = new Set([
         "txt",
@@ -1406,45 +1496,55 @@
           email: u.email,
           username: u.user_metadata?.username || u.user_metadata?.full_name || u.email.split("@")[0],
           avatar: u.user_metadata?.avatar_url,
-          isGuest: false,
         };
       }
-      function guestUser() {
-        const s = localStorage.getItem("guest-user");
-        if (s) {
-          try {
-            return JSON.parse(s);
-          } catch {}
-        }
-        const g = { id: `guest-${crypto.randomUUID()}`, email: "guest@local", username: "게스트", isGuest: true };
-        localStorage.setItem("guest-user", JSON.stringify(g));
-        return g;
+
+      // 네트워크 요청이 응답 없이 멈추는 경우를 대비한 타임아웃 헬퍼
+      function withTimeout(promise, ms, fallback) {
+        return new Promise((resolve) => {
+          let done = false;
+          const timer = setTimeout(() => {
+            if (!done) {
+              done = true;
+              resolve(fallback);
+            }
+          }, ms);
+          promise.then(
+            (v) => {
+              if (!done) {
+                done = true;
+                clearTimeout(timer);
+                resolve(v);
+              }
+            },
+            () => {
+              if (!done) {
+                done = true;
+                clearTimeout(timer);
+                resolve(fallback);
+              }
+            },
+          );
+        });
       }
 
       async function initAuth() {
-        const {
-          data: { session },
-        } = await sb.auth.getSession();
-        if (session?.user) {
-          localStorage.removeItem("guest-user");
-          setState({ user: mapUser(session.user), loading: false, view: "chat" });
-          return;
-        }
-        const gs = localStorage.getItem("guest-user");
-        if (gs) {
-          try {
-            setState({ user: JSON.parse(gs), loading: false, view: "chat" });
+        try {
+          const {
+            data: { session },
+          } = await withTimeout(sb.auth.getSession(), 5000, { data: { session: null } });
+          if (session?.user) {
+            setState({ user: mapUser(session.user), loading: false, view: "chat" });
             return;
-          } catch {
-            localStorage.removeItem("guest-user");
           }
+        } catch (e) {
+          console.warn("initAuth error:", e);
         }
         setState({ loading: false, view: "auth" });
       }
 
       sb.auth.onAuthStateChange((event, session) => {
         if (event === "SIGNED_IN" && session?.user) {
-          localStorage.removeItem("guest-user");
           setState({ user: mapUser(session.user), view: "chat" });
           loadUserData();
         } else if (event === "SIGNED_OUT") {
@@ -1462,20 +1562,8 @@
         }
       });
 
-      async function doGuestLogin() {
-        const u = guestUser();
-        setState({ user: u, view: "chat" });
-        toast("게스트 모드로 시작합니다", "success");
-        await loadUserData();
-      }
-
       async function doLogout() {
-        const cur = S.user;
-        if (cur?.isGuest) {
-          localStorage.removeItem("guest-user");
-        } else {
-          await sb.auth.signOut();
-        }
+        await sb.auth.signOut();
         setState({
           user: null,
           view: "auth",
@@ -1499,18 +1587,18 @@
       async function loadConversations() {
         const uid = S.user?.id;
         if (!uid) return;
-        if (S.user?.isGuest) {
-          const c = await getCachedConvs(uid);
-          setState({ conversations: c });
-          return;
-        }
         try {
-          const { data, error } = await sb
-            .from("conversations")
-            .select("*")
-            .eq("user_id", uid)
-            .order("updated_at", { ascending: false });
-          if (!error) setState({ conversations: data || [] });
+          const { data, error } = await withTimeout(
+            sb
+              .from("conversations")
+              .select("*")
+              .eq("user_id", uid)
+              .order("updated_at", { ascending: false }),
+            8000,
+            { data: null, error: new Error("timeout") },
+          );
+          if (error) throw error;
+          setState({ conversations: data || [] });
           for (const cv of data || []) {
             await cacheConv(cv).catch(() => {});
           }
@@ -1523,17 +1611,18 @@
       async function loadCustomGPTs() {
         const uid = S.user?.id;
         if (!uid) return;
-        if (S.user?.isGuest) {
-          setState({ customGPTs: [] });
-          return;
-        }
         try {
-          const { data, error } = await sb
-            .from("custom_gpts")
-            .select("*")
-            .or(`user_id.eq.${uid},is_public.eq.true`)
-            .order("created_at", { ascending: false });
-          if (!error) setState({ customGPTs: data || [] });
+          const { data, error } = await withTimeout(
+            sb
+              .from("custom_gpts")
+              .select("*")
+              .or(`user_id.eq.${uid},is_public.eq.true`)
+              .order("created_at", { ascending: false }),
+            8000,
+            { data: [], error: new Error("timeout") },
+          );
+          if (error) throw error;
+          setState({ customGPTs: data || [] });
         } catch {
           setState({ customGPTs: [] });
         }
@@ -1542,11 +1631,6 @@
       async function loadMessages(convId) {
         if (!convId) {
           setState({ messages: [] });
-          return;
-        }
-        if (S.user?.isGuest) {
-          const m = await getCachedMsgs(convId);
-          setState({ messages: m });
           return;
         }
         try {
@@ -1578,7 +1662,7 @@
           try {
             const meta = await storeFileLF(file, { conversationId: convId });
             if (meta.type === "image") {
-              if (S.user?.isGuest || !navigator.onLine) {
+              if (!navigator.onLine) {
                 const b64 = await fileToBase64(meta.id);
                 if (b64)
                   attachments.push({
@@ -1637,7 +1721,7 @@
         const trimmed = content.trim();
         if (!trimmed && filesToSend.length === 0) return;
         if (S.isStreaming) return;
-        if (!S.isOnline && !S.user?.isGuest) {
+        if (!S.isOnline) {
           toast("오프라인 상태입니다", "error");
           return;
         }
@@ -1645,7 +1729,7 @@
         let convId = S.currentConvId;
         let savedMsgId = null;
         const tempId = `temp-${Date.now()}`;
-        const isGuest = S.user?.isGuest === true;
+        const isGuest = false;
 
         // Determine system prompt / instructions
         let sysPrompt = S.currentGPT?.system_prompt;
@@ -1860,7 +1944,7 @@
 
       async function saveGPT(formData) {
         const uid = S.user?.id;
-        if (!uid || S.user?.isGuest) {
+        if (!uid) {
           toast("GPT 저장은 로그인 후 이용 가능합니다", "error");
           return;
         }
@@ -1960,49 +2044,31 @@
           const { data, error } = await sb.from("custom_gpt_files").select("*").eq("custom_gpt_id", gpt.id);
           if (!error) setState({ currentGPTFiles: data || [] });
         } catch {}
-        if (S.user?.isGuest) {
-          const nc = {
-            id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        const { data, error } = await sb
+          .from("conversations")
+          .insert({
             user_id: S.user.id,
             title: `${gpt.name} 대화`,
             custom_gpt_id: gpt.id,
             system_prompt: gpt.system_prompt,
             instructions: gpt.instructions,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          setState({ conversations: [nc, ...S.conversations], currentConvId: nc.id, messages: [] });
-          await cacheConv(nc).catch(() => {});
-        } else {
-          const { data, error } = await sb
-            .from("conversations")
-            .insert({
-              user_id: S.user.id,
-              title: `${gpt.name} 대화`,
-              custom_gpt_id: gpt.id,
-              system_prompt: gpt.system_prompt,
-              instructions: gpt.instructions,
-            })
-            .select()
-            .single();
-          if (!error) {
-            setState({ conversations: [data, ...S.conversations], currentConvId: data.id, messages: [] });
-            await cacheConv(data).catch(() => {});
-          }
+          })
+          .select()
+          .single();
+        if (!error) {
+          setState({ conversations: [data, ...S.conversations], currentConvId: data.id, messages: [] });
+          await cacheConv(data).catch(() => {});
         }
         toast(`${gpt.name}과(와) 대화를 시작합니다`, "success");
       }
 
       async function deleteConv(id) {
-        if (S.user?.isGuest) {
-          await delCachedConv(id);
-        } else {
-          await sb
-            .from("conversations")
-            .delete()
-            .eq("id", id)
-            .then(() => {});
-        }
+        await sb
+          .from("conversations")
+          .delete()
+          .eq("id", id)
+          .then(() => {});
+        await delCachedConv(id).catch(() => {});
         const next = S.currentConvId === id ? null : S.currentConvId;
         setState({
           conversations: S.conversations.filter((c) => c.id !== id),
@@ -2058,21 +2124,6 @@
       // ═══════════════════════════════════════════════════════════════
       const app = document.getElementById("app");
 
-      function render() {
-        if (S.loading) {
-          document.getElementById("loading-screen").classList.remove("hidden");
-          app.innerHTML = "";
-          return;
-        }
-        document.getElementById("loading-screen").classList.add("hidden");
-
-        if (S.view === "auth") {
-          renderAuth();
-          return;
-        }
-        renderMain();
-      }
-
       // ── AUTH PAGE ────────────────────────────────────────────────
       let authState = { isLogin: true, email: "", pw: "", otp: "", otpSent: false, loading: false };
 
@@ -2083,8 +2134,6 @@
       <div class="auth-logo">${iconSvg("MessageSquare", 24)}</div>
       <div class="auth-title" id="auth-title">${authState.isLogin ? "로그인" : "회원가입"}</div>
       <div class="auth-sub">ChatGPT 스타일 AI 채팅을 시작하세요</div>
-      <button class="auth-btn outline" id="btn-guest">게스트로 바로 시작하기</button>
-      <div class="auth-divider"><span>또는</span></div>
       <input class="auth-input" type="email" id="auth-email" placeholder="이메일" value="${authState.email}" ${authState.loading || authState.otpSent ? "disabled" : ""}>
       <div id="auth-extra"></div>
       <div class="auth-switch" id="auth-switch">${authState.isLogin ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}</div>
@@ -2131,7 +2180,6 @@
       }
 
       function bindAuth() {
-        document.getElementById("btn-guest")?.addEventListener("click", doGuestLogin);
         document.getElementById("auth-email")?.addEventListener("input", (e) => {
           authState.email = e.target.value;
         });
@@ -2207,9 +2255,12 @@
         app.innerHTML = `
   <div id="main-layout">
     <div id="sidebar">
-      <div class="sidebar-top">
+      <div class="sidebar-top" style="display:flex;flex-direction:column;gap:8px;">
         <button class="btn-new-chat" id="btn-new-chat">
           ${iconSvg("Plus", 16)} 새 채팅
+        </button>
+        <button class="btn-new-chat" id="btn-open-browser">
+          🌐 브라우저 열기
         </button>
       </div>
       <div id="gpt-section" class="gpt-section"></div>
@@ -2222,7 +2273,6 @@
         <div class="header-title">
           ${iconSvg("MessageSquare", 20)}
           AI Chat
-          ${S.user?.isGuest ? '<span class="guest-badge">게스트 모드</span>' : ""}
         </div>
         <div class="header-right">
           <button class="user-btn" id="user-btn" title="${S.user?.username || ""}">
@@ -2330,13 +2380,12 @@
       function renderGPTSection() {
         const el = document.getElementById("gpt-section");
         if (!el) return;
-        const canCreate = !S.user?.isGuest;
         let html = `<div class="gpt-header">
     <span class="gpt-header-title">${iconSvg("Bot", 16)} 커스텀 GPT</span>
-    ${canCreate ? `<button class="btn-create-gpt" id="btn-create-gpt">+ 만들기</button>` : ""}
+    <button class="btn-create-gpt" id="btn-create-gpt">+ 만들기</button>
   </div>`;
         if (S.customGPTs.length === 0) {
-          html += `<div class="gpt-empty">${canCreate ? "아직 커스텀 GPT가 없습니다<br>위 버튼을 눌러 만들어보세요!" : "게스트 모드에서는 커스텀 GPT를 사용할 수 없습니다"}</div>`;
+          html += `<div class="gpt-empty">아직 커스텀 GPT가 없습니다<br>위 버튼을 눌러 만들어보세요!</div>`;
         } else {
           for (const g of S.customGPTs) {
             html += `<div class="gpt-item" data-gid="${g.id}">
@@ -2634,10 +2683,6 @@
       async function handleGPTFileUpload(e) {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
-        if (S.user?.isGuest) {
-          toast("파일 업로드는 로그인 후 이용 가능합니다", "error");
-          return;
-        }
         const btn = document.getElementById("modal-save");
         if (btn) btn.disabled = true;
         for (const file of files) {
@@ -2703,6 +2748,11 @@
         document.getElementById("btn-new-chat")?.addEventListener("click", () => {
           _renderedMsgIds.clear();
           setState({ currentConvId: null, messages: [], streamingMsg: "", currentGPT: null, currentGPTFiles: [] });
+        });
+
+        // Browser overlay open
+        document.getElementById("btn-open-browser")?.addEventListener("click", () => {
+          openBrowserOverlay();
         });
 
         // User dropdown
@@ -2789,8 +2839,6 @@
           .replace(/"/g, "&quot;");
       }
 
-      // Override render to do targeted updates after initial render
-      const _fullRenderView = render;
       function render() {
         if (S.loading) {
           document.getElementById("loading-screen").classList.remove("hidden");
@@ -2838,8 +2886,7 @@
       }
       function updateHeader() {
         const tb = document.querySelector(".header-title");
-        if (tb)
-          tb.innerHTML = `${iconSvg("MessageSquare", 20)} AI Chat ${S.user?.isGuest ? '<span class="guest-badge">게스트 모드</span>' : ""}`;
+        if (tb) tb.innerHTML = `${iconSvg("MessageSquare", 20)} AI Chat`;
         const dd = document.getElementById("user-dropdown");
         if (dd) {
           dd.className = `dropdown ${S.dropdownOpen ? "open" : ""}`;
@@ -2870,33 +2917,16 @@
       });
 
       // ═══════════════════════════════════════════════════════════════
-      // 🚀  BOOT
+      // 🌐  브라우저 오버레이
       // ═══════════════════════════════════════════════════════════════
-      (async () => {
-        try {
-          await Promise.all([
-            blobStore.ready(),
-            metaStore.ready(),
-            msgFileStore.ready(),
-            convStore.ready(),
-            msgStore.ready(),
-          ]);
-        } catch (e) {
-          console.warn("LocalForage init:", e);
+      const BROWSER_HOME_URL =
+        "https://luckysexyqueen.github.io/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260802/";
+
+      function openBrowserOverlay() {
+        const brow = document.getElementById("brow");
+        const iframe = document.getElementById("brow-iframe");
+        if (!brow || !iframe) return;
+        if (!iframe.src || iframe.src === "about:blank") {
+          iframe.src = BROWSER_HOME_URL;
         }
-
-        await initAuth();
-        if (S.user) await loadUserData();
-        render();
-        document.getElementById("loading-screen").classList.add("hidden");
-      })();
-
-      // PWA Service Worker
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").catch(() => {});
-        });
-      }
-    </script>
-  </body>
-</html>
+       
