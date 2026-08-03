@@ -15,8 +15,6 @@
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-    <!-- Font Awesome (브라우저 오버레이 아이콘용) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
 
     <style>
       /* ===== RESET & BASE ===== */
@@ -99,7 +97,27 @@
         border: none;
       }
 
-      /* ===== SCROLLBAR ===== */
+      <!-- ── 브라우저 오버레이 ── -->
+<div id="brow">
+  <div id="brow-tb">
+    <button id="brow-back" class="btn-p px-3 py-1.5 text-xs" style="border-radius:7px;min-height:34px;">
+      <i class="fa-solid fa-arrow-left"></i> 돌아가기
+    </button>
+    <div id="brow-url">
+      <i class="fa-solid fa-lock text-green-400 mr-1 text-xs"></i>GoldFireDragonBrowser
+    </div>
+    <button id="brow-reload" class="btn-g w-8 h-8 text-xs" title="새로고침">
+      <i class="fa-solid fa-rotate-right"></i>
+    </button>
+    <button id="brow-newtab" class="btn-g w-8 h-8 text-xs" title="새 탭에서 열기">
+      <i class="fa-solid fa-arrow-up-right-from-square"></i>
+    </button>
+  </div>
+  <iframe id="brow-iframe" src="https://luckysexyqueen.github.io/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260802/" title="브라우저" allowfullscreen="" style="flex:1;width:100%;border:none;">
+  </iframe>
+</div>
+
+    /* ===== SCROLLBAR ===== */
     ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
@@ -1135,25 +1153,6 @@
     <div id="toast-container"></div>
     <div id="app"></div>
 
-    <!-- ── 브라우저 오버레이 ── -->
-    <div id="brow">
-      <div id="brow-tb">
-        <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
-          <i class="fa-solid fa-arrow-left"></i>&nbsp;돌아가기
-        </button>
-        <div id="brow-url">
-          <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
-        </div>
-        <button id="brow-reload" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새로고침">
-          <i class="fa-solid fa-rotate-right"></i>
-        </button>
-        <button id="brow-newtab" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새 탭에서 열기">
-          <i class="fa-solid fa-arrow-up-right-from-square"></i>
-        </button>
-      </div>
-      <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
-    </div>
-
     <script>
       // ═══════════════════════════════════════════════════════════════
       // ⚙️  설정 — Supabase URL & Anon Key를 여기에 입력하세요
@@ -2059,6 +2058,21 @@
       // ═══════════════════════════════════════════════════════════════
       const app = document.getElementById("app");
 
+      function render() {
+        if (S.loading) {
+          document.getElementById("loading-screen").classList.remove("hidden");
+          app.innerHTML = "";
+          return;
+        }
+        document.getElementById("loading-screen").classList.add("hidden");
+
+        if (S.view === "auth") {
+          renderAuth();
+          return;
+        }
+        renderMain();
+      }
+
       // ── AUTH PAGE ────────────────────────────────────────────────
       let authState = { isLogin: true, email: "", pw: "", otp: "", otpSent: false, loading: false };
 
@@ -2193,12 +2207,9 @@
         app.innerHTML = `
   <div id="main-layout">
     <div id="sidebar">
-      <div class="sidebar-top" style="display:flex;flex-direction:column;gap:8px;">
+      <div class="sidebar-top">
         <button class="btn-new-chat" id="btn-new-chat">
           ${iconSvg("Plus", 16)} 새 채팅
-        </button>
-        <button class="btn-new-chat" id="btn-open-browser">
-          🌐 브라우저 열기
         </button>
       </div>
       <div id="gpt-section" class="gpt-section"></div>
@@ -2694,11 +2705,6 @@
           setState({ currentConvId: null, messages: [], streamingMsg: "", currentGPT: null, currentGPTFiles: [] });
         });
 
-        // Browser overlay open
-        document.getElementById("btn-open-browser")?.addEventListener("click", () => {
-          openBrowserOverlay();
-        });
-
         // User dropdown
         document.getElementById("user-btn")?.addEventListener("click", (e) => {
           e.stopPropagation();
@@ -2783,6 +2789,8 @@
           .replace(/"/g, "&quot;");
       }
 
+      // Override render to do targeted updates after initial render
+      const _fullRenderView = render;
       function render() {
         if (S.loading) {
           document.getElementById("loading-screen").classList.remove("hidden");
@@ -2862,41 +2870,9 @@
       });
 
       // ═══════════════════════════════════════════════════════════════
-      // 🌐  브라우저 오버레이
-      // ═══════════════════════════════════════════════════════════════
-      const BROWSER_HOME_URL =
-        "https://luckysexyqueen.github.io/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260802/";
-
-      function openBrowserOverlay() {
-        const brow = document.getElementById("brow");
-        const iframe = document.getElementById("brow-iframe");
-        if (!brow || !iframe) return;
-        if (!iframe.src || iframe.src === "about:blank") {
-          iframe.src = BROWSER_HOME_URL;
-        }
-        brow.classList.add("open");
-      }
-      function closeBrowserOverlay() {
-        document.getElementById("brow")?.classList.remove("open");
-      }
-      function bindBrowserOverlay() {
-        document.getElementById("brow-back")?.addEventListener("click", closeBrowserOverlay);
-        document.getElementById("brow-reload")?.addEventListener("click", () => {
-          const iframe = document.getElementById("brow-iframe");
-          if (iframe && iframe.src && iframe.src !== "about:blank") {
-            iframe.src = iframe.src;
-          }
-        });
-        document.getElementById("brow-newtab")?.addEventListener("click", () => {
-          window.open(BROWSER_HOME_URL, "_blank", "noopener,noreferrer");
-        });
-      }
-
-      // ═══════════════════════════════════════════════════════════════
       // 🚀  BOOT
       // ═══════════════════════════════════════════════════════════════
       (async () => {
-        bindBrowserOverlay();
         try {
           await Promise.all([
             blobStore.ready(),
