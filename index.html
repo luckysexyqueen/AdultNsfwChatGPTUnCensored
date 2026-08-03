@@ -21,8 +21,8 @@ function escHtml(str){
   if(!str) return '';
   return String(str)
     .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
+    .replace(/\u003C/g,'&lt;')
+    .replace(/\u003E/g,'&gt;')
     .replace(/"/g,'&quot;')
     .replace(/'/g,'&#039;');
 }
