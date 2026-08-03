@@ -2929,4 +2929,43 @@
         if (!iframe.src || iframe.src === "about:blank") {
           iframe.src = BROWSER_HOME_URL;
         }
-       
+        brow.classList.add("open");
+      }
+
+      function closeBrowserOverlay() {
+        const brow = document.getElementById("brow");
+        if (brow) brow.classList.remove("open");
+      }
+
+      // Browser overlay button bindings
+      document.getElementById("brow-back")?.addEventListener("click", closeBrowserOverlay);
+      document.getElementById("brow-reload")?.addEventListener("click", () => {
+        const iframe = document.getElementById("brow-iframe");
+        if (iframe) iframe.src = iframe.src;
+      });
+      document.getElementById("brow-newtab")?.addEventListener("click", () => {
+        const iframe = document.getElementById("brow-iframe");
+        const url = iframe?.src;
+        if (url && url !== "about:blank") window.open(url, "_blank");
+      });
+
+      // ═══════════════════════════════════════════════════════════════
+      // 🚀  BOOT
+      // ═══════════════════════════════════════════════════════════════
+      (async function boot() {
+        try {
+          clearTimeout(window.__bootWatchdog);
+          await initAuth();
+          if (S.user) {
+            await loadUserData();
+          }
+        } catch (e) {
+          console.error("boot error:", e);
+          setState({ loading: false, view: "auth" });
+        } finally {
+          clearTimeout(window.__bootWatchdog);
+        }
+      })();
+    </script>
+  </body>
+</html>
