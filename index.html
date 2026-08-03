@@ -1,131 +1,1462 @@
-await file.text(); }catch(err){ fc=''; }
-      gptModalFiles.push({
-        file_name: file.name,
-        file_url: sd?.signedUrl,
-        file_path: data.path,
-        file_size: file.size,
-        mime_type: file.type,
-        file_content: fc
-      });
-    }catch(e){ toast(`${file.name} 처리 중 오류`,'error'); }
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#10a37f" />
+  <meta name="description" content="제한 없는 AI 채팅 애플리케이션" />
+  <title>AI Chat - 무제한 대화</title>
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <!-- LocalForage -->
+  <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    body { background: #212121; color: #fff; overflow: hidden; }
+    #app { height: 100vh; display: flex; flex-direction: column; }
+
+    /* ===== VARIABLES ===== */
+    :root {
+      --bg: #212121; --bg2: #2f2f2f; --bg3: #343541; --bg4: #40414f;
+      --border: rgba(255,255,255,0.1); --accent: #10a37f; --accent-hover: #0d8968;
+      --text: #fff; --text-muted: rgba(255,255,255,0.5); --text-dim: rgba(255,255,255,0.25);
+      --danger: #ef4444;
+    }
+
+    /* ── 브라우저 패널 ── */
+#brow { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; background: #0a0b0f; transform: translateY(100%); transition: transform .32s cubic-bezier(.4,0,.2,1); }
+#brow.open { transform: translateY(0); }
+#brow-tb { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #0e0f14; border-bottom: 1px solid #1e1f2e; }
+#brow-url { flex: 1; background: #16171f; border: 1px solid #2d2f3e; border-radius: 7px; padding: 5px 10px; font-size: 11px; color: #9ca3af; font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#brow-iframe { flex: 1; width: 100%; border: none; }
+
+<!-- ── 브라우저 오버레이 ── -->
+<div id="brow">
+  <div id="brow-tb">
+    <button id="brow-back" class="btn-p px-3 py-1.5 text-xs" style="border-radius:7px;min-height:34px;">
+      <i class="fa-solid fa-arrow-left"></i> 돌아가기
+    </button>
+    <div id="brow-url">
+      <i class="fa-solid fa-lock text-green-400 mr-1 text-xs"></i>GoldFireDragonBrowser
+    </div>
+    <button id="brow-reload" class="btn-g w-8 h-8 text-xs" title="새로고침">
+      <i class="fa-solid fa-rotate-right"></i>
+    </button>
+    <button id="brow-newtab" class="btn-g w-8 h-8 text-xs" title="새 탭에서 열기">
+      <i class="fa-solid fa-arrow-up-right-from-square"></i>
+    </button>
+  </div>
+  <iframe id="brow-iframe" src="https://luckysexyqueen.github.io/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260802/" title="브라우저" allowfullscreen="" style="flex:1;width:100%;border:none;">
+  </iframe>
+</div>
+
+    /* ===== SCROLLBAR ===== */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+    /* ===== LAYOUT ===== */
+    #main-layout { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ===== SIDEBAR ===== */
+    #sidebar {
+      width: 260px; min-width: 260px; background: var(--bg2);
+      border-right: 1px solid var(--border); display: flex;
+      flex-direction: column; height: 100vh; overflow: hidden;
+    }
+    .sidebar-top { padding: 12px; border-bottom: 1px solid var(--border); }
+    .btn-new-chat {
+      width: 100%; display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: transparent; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px;
+      transition: background 0.15s;
+    }
+    .btn-new-chat:hover { background: var(--bg3); }
+    .sidebar-section { flex: 1; overflow-y: auto; padding: 8px; }
+    .sidebar-label { font-size: 11px; color: var(--text-muted); padding: 8px 10px 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .conv-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+      border-radius: 8px; cursor: pointer; transition: background 0.15s; position: relative;
+    }
+    .conv-item:hover { background: var(--bg3); }
+    .conv-item.active { background: var(--bg4); }
+    .conv-item-title { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conv-item-del {
+      opacity: 0; background: none; border: none; color: var(--danger);
+      cursor: pointer; padding: 2px; border-radius: 4px; display: flex;
+      align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .conv-item:hover .conv-item-del { opacity: 1; }
+
+    /* GPT List */
+    .gpt-section { border-bottom: 1px solid var(--border); padding: 8px; }
+    .gpt-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; }
+    .gpt-header-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .btn-create-gpt {
+      font-size: 12px; padding: 4px 10px; background: var(--accent);
+      border: none; border-radius: 6px; color: white; cursor: pointer;
+    }
+    .btn-create-gpt:hover { background: var(--accent-hover); }
+    .gpt-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+      border-radius: 8px; cursor: pointer; transition: background 0.15s; position: relative;
+    }
+    .gpt-item:hover { background: var(--bg3); }
+    .gpt-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-weight: bold; font-size: 14px;
+    }
+    .gpt-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+    .gpt-info { flex: 1; min-width: 0; }
+    .gpt-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gpt-desc { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gpt-actions { display: none; gap: 2px; }
+    .gpt-item:hover .gpt-actions { display: flex; }
+    .gpt-action-btn {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      padding: 4px; border-radius: 4px; display: flex; align-items: center;
+    }
+    .gpt-action-btn:hover { background: var(--bg4); color: var(--text); }
+    .gpt-empty { text-align: center; color: var(--text-muted); font-size: 12px; padding: 16px 8px; }
+
+    /* ===== HEADER ===== */
+    #header {
+      height: 56px; min-height: 56px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; background: var(--bg2);
+    }
+    .header-title { font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+    .guest-badge {
+      font-size: 11px; background: rgba(234,179,8,0.2); color: #eab308;
+      padding: 2px 8px; border-radius: 9999px;
+    }
+    .header-right { position: relative; }
+    .user-btn {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--accent);
+      border: none; color: white; cursor: pointer; font-weight: 600; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .dropdown {
+      position: absolute; top: calc(100% + 8px); right: 0;
+      background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+      min-width: 200px; overflow: hidden; z-index: 100; display: none;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .dropdown.open { display: block; }
+    .dropdown-header { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .dropdown-user-name { font-size: 13px; font-weight: 500; }
+    .dropdown-user-email { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .dropdown-item {
+      display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+      font-size: 13px; cursor: pointer; transition: background 0.15s;
+    }
+    .dropdown-item:hover { background: var(--bg4); }
+    .dropdown-item.danger { color: var(--danger); }
+    .dropdown-sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+    /* ===== GPT BANNER ===== */
+    #gpt-banner {
+      background: linear-gradient(to right, rgba(139,92,246,0.2), rgba(236,72,153,0.2));
+      border-bottom: 1px solid var(--border);
+      padding: 10px 24px; display: none; align-items: center; gap: 12px;
+    }
+    #gpt-banner.visible { display: flex; }
+    .gpt-banner-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      background: linear-gradient(135deg, #8b5cf6, #ec4899);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 13px; flex-shrink: 0;
+    }
+
+    /* ===== CHAT AREA ===== */
+    #content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    #messages-area { flex: 1; overflow-y: auto; }
+    .messages-inner { padding-bottom: 16px; }
+
+    /* Empty state */
+    #empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; padding: 40px 20px; text-align: center;
+    }
+    .empty-logo {
+      width: 64px; height: 64px; border-radius: 50%; background: var(--accent);
+      display: flex; align-items: center; justify-content: center; margin-bottom: 20px;
+    }
+    .empty-title { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+    .empty-sub { color: var(--text-muted); font-size: 14px; }
+
+    /* Message */
+    .message { padding: 20px 16px; }
+    .message.assistant { background: rgba(255,255,255,0.03); }
+    .message-inner { max-width: 720px; margin: 0 auto; display: flex; gap: 14px; }
+    .msg-avatar {
+      width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 14px;
+    }
+    .msg-avatar.user { background: var(--accent); }
+    .msg-avatar.assistant { background: var(--bg4); }
+    .msg-body { flex: 1; min-width: 0; padding-top: 4px; }
+    .msg-text {
+      font-size: 15px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+      color: var(--text);
+    }
+    .msg-cursor {
+      display: inline-block; width: 8px; height: 16px;
+      background: var(--text); border-radius: 2px; margin-left: 3px;
+      animation: blink 0.8s infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    /* File attachments in messages */
+    .msg-files { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .msg-img-thumb {
+      max-width: 280px; max-height: 200px; border-radius: 10px;
+      overflow: hidden; border: 1px solid var(--border);
+    }
+    .msg-img-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+    .msg-file-chip {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px; font-size: 12px; max-width: 220px;
+    }
+    .msg-file-chip .fc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .msg-file-chip .fc-size { color: var(--text-muted); font-size: 10px; margin-top: 1px; }
+
+    /* ===== CHAT INPUT ===== */
+    #chat-input-area {
+      border-top: 1px solid var(--border); background: var(--bg); padding: 12px 16px 14px;
+    }
+    .input-wrap { max-width: 720px; margin: 0 auto; }
+    #file-previews {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;
+    }
+    .fp-img {
+      position: relative; width: 76px; height: 76px;
+      border-radius: 10px; overflow: hidden; border: 1px solid var(--border);
+    }
+    .fp-img img { width: 100%; height: 100%; object-fit: cover; }
+    .fp-img-name {
+      position: absolute; bottom: 0; inset-x: 0;
+      background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+      font-size: 9px; padding: 4px 3px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .fp-chip {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 10px; max-width: 190px;
+    }
+    .fp-chip-name { font-size: 11px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fp-chip-size { font-size: 9px; color: var(--text-muted); }
+    .fp-remove {
+      background: rgba(0,0,0,0.6); border: none; color: #fff; cursor: pointer;
+      border-radius: 50%; width: 18px; height: 18px;
+      display: flex; align-items: center; justify-content: center;
+      position: absolute; top: 3px; right: 3px; font-size: 10px;
+    }
+    .fp-chip .fp-remove { position: static; background: none; color: var(--text-muted); font-size: 12px; }
+    .input-box {
+      display: flex; align-items: flex-end; gap: 8px;
+      background: var(--bg2); border-radius: 14px; border: 1px solid var(--border);
+      padding: 10px 14px;
+    }
+    .input-box-btn {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      padding: 2px; border-radius: 6px; transition: color 0.15s; flex-shrink: 0; margin-bottom: 2px;
+    }
+    .input-box-btn:hover { color: var(--text); }
+    .input-box-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    #msg-input {
+      flex: 1; background: none; border: none; outline: none; color: var(--text);
+      font-size: 14px; line-height: 1.6; resize: none; min-height: 24px; max-height: 180px;
+      overflow-y: auto; font-family: inherit;
+    }
+    #msg-input::placeholder { color: var(--text-dim); }
+    .send-btn {
+      width: 32px; height: 32px; border-radius: 8px; background: var(--accent);
+      border: none; color: white; cursor: pointer; flex-shrink: 0; margin-bottom: 2px;
+      display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+    }
+    .send-btn:hover { background: var(--accent-hover); }
+    .send-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    .input-hint { font-size: 11px; color: var(--text-dim); text-align: center; margin-top: 6px; }
+
+    /* ===== AUTH PAGE ===== */
+    #auth-page {
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: var(--bg); padding: 16px;
+    }
+    .auth-card {
+      width: 100%; max-width: 400px; background: var(--bg2);
+      border: 1px solid var(--border); border-radius: 16px; padding: 32px 28px;
+    }
+    .auth-logo {
+      width: 48px; height: 48px; border-radius: 50%; background: rgba(16,163,127,0.15);
+      display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;
+    }
+    .auth-title { font-size: 22px; font-weight: 700; text-align: center; margin-bottom: 6px; }
+    .auth-sub { font-size: 13px; color: var(--text-muted); text-align: center; margin-bottom: 24px; }
+    .auth-input {
+      width: 100%; background: var(--bg3); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px;
+      outline: none; margin-bottom: 10px; transition: border-color 0.15s;
+    }
+    .auth-input:focus { border-color: var(--accent); }
+    .auth-input:disabled { opacity: 0.5; }
+    .auth-btn {
+      width: 100%; padding: 11px; border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+      margin-bottom: 10px;
+    }
+    .auth-btn.primary { background: var(--accent); color: white; }
+    .auth-btn.primary:hover { background: var(--accent-hover); }
+    .auth-btn.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .auth-btn.outline {
+      background: transparent; color: var(--text);
+      border: 2px solid rgba(16,163,127,0.5);
+    }
+    .auth-btn.outline:hover { background: rgba(16,163,127,0.1); }
+    .auth-divider { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+    .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+    .auth-divider span { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .auth-switch { text-align: center; font-size: 13px; color: var(--text-muted); cursor: pointer; }
+    .auth-switch:hover { color: var(--text); }
+
+    /* ===== GPT BUILDER MODAL ===== */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; padding: 16px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-box {
+      background: var(--bg2); border-radius: 14px;
+      width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto;
+    }
+    .modal-header {
+      position: sticky; top: 0; background: var(--bg2);
+      border-bottom: 1px solid var(--border); padding: 20px 24px;
+      display: flex; align-items: center; justify-content: space-between; z-index: 1;
+    }
+    .modal-title { font-size: 20px; font-weight: 700; }
+    .modal-close {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      padding: 4px; border-radius: 6px; display: flex;
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 24px; }
+    .form-group { margin-bottom: 20px; }
+    .form-label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 7px; }
+    .form-label .req { color: var(--danger); margin-left: 3px; }
+    .form-input {
+      width: 100%; background: var(--bg4); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; color: var(--text); font-size: 14px;
+      outline: none; font-family: inherit; transition: border-color 0.15s;
+    }
+    .form-input:focus { border-color: var(--accent); }
+    .form-textarea { min-height: 100px; resize: vertical; }
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 10px;
+      padding: 28px; text-align: center; cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .upload-zone:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.02); }
+    .upload-zone-text { color: var(--text-muted); font-size: 13px; margin-top: 8px; }
+    .upload-zone-hint { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
+    .file-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .file-list-item {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--bg4); border-radius: 8px; padding: 8px 12px;
+    }
+    .file-list-name { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .file-list-size { font-size: 11px; color: var(--text-muted); }
+    .file-list-del {
+      background: none; border: none; color: var(--danger); cursor: pointer;
+      padding: 2px; display: flex; border-radius: 4px;
+    }
+    .checkbox-row { display: flex; align-items: center; gap: 10px; }
+    .checkbox-row input { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+    .modal-footer { display: flex; gap: 10px; padding-top: 8px; }
+    .modal-footer .btn-cancel {
+      flex: 1; padding: 11px; background: var(--bg4); border: none;
+      color: var(--text); border-radius: 8px; font-size: 14px; cursor: pointer;
+    }
+    .modal-footer .btn-save {
+      flex: 1; padding: 11px; background: var(--accent); border: none;
+      color: white; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .modal-footer .btn-save:hover { background: var(--accent-hover); }
+    .modal-footer .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ===== TOAST ===== */
+    #toast-container {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; gap: 8px; z-index: 9999;
+      pointer-events: none;
+    }
+    .toast {
+      padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 500;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4); animation: slideIn 0.25s ease;
+      pointer-events: auto; max-width: 320px; text-align: center;
+    }
+    .toast.success { background: #1a3a2f; border: 1px solid var(--accent); color: #4ade80; }
+    .toast.error { background: #3a1a1a; border: 1px solid var(--danger); color: #f87171; }
+    .toast.info { background: #1a2a3a; border: 1px solid #3b82f6; color: #93c5fd; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+
+    /* ===== SPINNER ===== */
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.15);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-screen {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; align-items: center; justify-content: center; z-index: 999;
+    }
+    #loading-screen.hidden { display: none; }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 640px) {
+      #sidebar { display: none; }
+      #sidebar.open { display: flex; position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading-screen"><div class="spinner"></div></div>
+<div id="toast-container"></div>
+<div id="app"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ⚙️  설정 — Supabase URL & Anon Key를 여기에 입력하세요
+//    Anon Key는 .env 파일의 VITE_SUPABASE_ANON_KEY 값을 사용하세요
+// ═══════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://shtixmaykwundutbshti.backend.onspace.ai';
+const SUPABASE_ANON_KEY = (function(){
+  // Vite 프로젝트의 .env 파일에서 VITE_SUPABASE_ANON_KEY를 복사하여 아래에 붙여넣으세요
+  // 예: return 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+  const stored = localStorage.getItem('_sb_anon_key');
+  if (stored) return stored;
+  const key = prompt(
+    '🔑 Supabase Anon Key를 입력하세요\n\n' +
+    '(.env 파일의 VITE_SUPABASE_ANON_KEY 값)\n' +
+    '한 번 입력하면 저장됩니다.'
+  );
+  if (key) { localStorage.setItem('_sb_anon_key', key); return key; }
+  return '';
+})();
+
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/chat-stream`;
+
+// ═══════════════════════════════════════════════════════════════
+// 🗄️  SUPABASE CLIENT
+// ═══════════════════════════════════════════════════════════════
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 📦  LOCALFORAGE STORES (파일 영구 저장)
+// ═══════════════════════════════════════════════════════════════
+const blobStore = localforage.createInstance({ name:'aichat-files', storeName:'blobs' });
+const metaStore = localforage.createInstance({ name:'aichat-files', storeName:'meta' });
+const msgFileStore = localforage.createInstance({ name:'aichat-files', storeName:'msg_files' });
+const convStore = localforage.createInstance({ name:'aichat-offline', storeName:'conversations' });
+const msgStore = localforage.createInstance({ name:'aichat-offline', storeName:'messages' });
+
+const TEXT_EXTS = new Set(['txt','md','csv','json','log','xml','yaml','yml','ts','tsx','js','jsx','py','css','html','sh','env','ini','toml','sql','rs','go','java','kt','swift','c','cpp','h','cs','php','rb']);
+function fileType(file){ if(file.type.startsWith('image/')) return 'image'; if(file.type.startsWith('text/')||file.type==='application/json') return 'text'; const e=file.name.split('.').pop()?.toLowerCase()||''; return TEXT_EXTS.has(e)?'text':'other'; }
+function fmtSize(b){ if(b<1024) return b+'B'; if(b<1048576) return (b/1024).toFixed(1)+'KB'; return (b/1048576).toFixed(1)+'MB'; }
+
+async function storeFileLF(file, ctx={}){
+  const id=`f-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
+  const type=fileType(file);
+  let textContent;
+  if(type==='text'){ try{ const raw=await file.text(); textContent=raw.length>50000?raw.slice(0,50000)+'\n...(생략)':raw; }catch{} }
+  const meta={id,name:file.name,mimeType:file.type||'application/octet-stream',size:file.size,type,textContent,createdAt:new Date().toISOString(),...ctx};
+  await blobStore.setItem(id, file.slice(0,file.size,file.type));
+  await metaStore.setItem(id, meta);
+  return meta;
+}
+async function getFileBlob(id){ try{ return await blobStore.getItem(id); }catch{ return null; } }
+async function getFileMeta(id){ try{ return await metaStore.getItem(id); }catch{ return null; } }
+async function createObjUrl(id){ const b=await getFileBlob(id); return b?URL.createObjectURL(b):null; }
+async function fileToBase64(id){ const b=await getFileBlob(id); if(!b) return null; return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(b); }); }
+async function setMsgFiles(msgId,ids){ if(!msgId||!ids.length) return; await msgFileStore.setItem(msgId,ids); }
+async function getMsgFiles(msgId){ try{ return (await msgFileStore.getItem(msgId))||[]; }catch{ return []; } }
+async function getMsgFileMetas(msgId){ const ids=await getMsgFiles(msgId); if(!ids.length) return []; const r=await Promise.all(ids.map(getFileMeta)); return r.filter(Boolean); }
+
+// Offline cache
+async function cacheConv(c){ try{ await convStore.setItem(c.id,c); }catch{} }
+async function getCachedConvs(uid){ const res=[]; await convStore.iterate(v=>{ if(v.user_id===uid) res.push(v); }); return res.sort((a,b)=>new Date(b.updated_at)-new Date(a.updated_at)); }
+async function delCachedConv(id){ try{ await convStore.removeItem(id); await msgStore.iterate(async(v,k)=>{ if(v.conversation_id===id) await msgStore.removeItem(k); }); }catch{} }
+async function cacheMsgLF(m){ try{ await msgStore.setItem(m.id,m); }catch{} }
+async function getCachedMsgs(cid){ const res=[]; await msgStore.iterate(v=>{ if(v.conversation_id===cid) res.push(v); }); return res.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)); }
+
+// ═══════════════════════════════════════════════════════════════
+// 🔄  STATE
+// ═══════════════════════════════════════════════════════════════
+const S = {
+  user: null, loading: true,
+  conversations: [], currentConvId: null,
+  messages: [], streamingMsg: '', isStreaming: false,
+  customGPTs: [], currentGPT: null, currentGPTFiles: [],
+  isOnline: navigator.onLine,
+  view: 'chat', // 'chat' | 'auth'
+  // modals
+  gptBuilderOpen: false, gptBuilderEditing: null,
+  // tmp attached files (before send)
+  attachedFiles: [],
+  // dropdown open
+  dropdownOpen: false,
+};
+
+let renderScheduled=false;
+function setState(updates){
+  Object.assign(S,updates);
+  if(!renderScheduled){ renderScheduled=true; requestAnimationFrame(()=>{ renderScheduled=false; render(); }); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🔔  TOAST
+// ═══════════════════════════════════════════════════════════════
+function toast(msg,type='info',dur=3000){
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;
+  el.textContent=msg;
+  const c=document.getElementById('toast-container');
+  c.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity 0.3s'; setTimeout(()=>el.remove(),300); },dur);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🔐  AUTH
+// ═══════════════════════════════════════════════════════════════
+function mapUser(u){ return {id:u.id,email:u.email,username:u.user_metadata?.username||u.user_metadata?.full_name||u.email.split('@')[0],avatar:u.user_metadata?.avatar_url,isGuest:false}; }
+function guestUser(){ const s=localStorage.getItem('guest-user'); if(s){ try{ return JSON.parse(s); }catch{} } const g={id:`guest-${crypto.randomUUID()}`,email:'guest@local',username:'게스트',isGuest:true}; localStorage.setItem('guest-user',JSON.stringify(g)); return g; }
+
+async function initAuth(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(session?.user){ localStorage.removeItem('guest-user'); setState({user:mapUser(session.user),loading:false,view:'chat'}); return; }
+  const gs=localStorage.getItem('guest-user');
+  if(gs){ try{ setState({user:JSON.parse(gs),loading:false,view:'chat'}); return; }catch{ localStorage.removeItem('guest-user'); } }
+  setState({loading:false,view:'auth'});
+}
+
+sb.auth.onAuthStateChange((event,session)=>{
+  if(event==='SIGNED_IN'&&session?.user){ localStorage.removeItem('guest-user'); setState({user:mapUser(session.user),view:'chat'}); loadUserData(); }
+  else if(event==='SIGNED_OUT'){ setState({user:null,view:'auth',conversations:[],messages:[],customGPTs:[],currentConvId:null,currentGPT:null}); }
+  else if(event==='TOKEN_REFRESHED'&&session?.user){ setState({user:mapUser(session.user)}); }
+});
+
+async function doGuestLogin(){ const u=guestUser(); setState({user:u,view:'chat'}); toast('게스트 모드로 시작합니다','success'); await loadUserData(); }
+
+async function doLogout(){
+  const cur=S.user;
+  if(cur?.isGuest){ localStorage.removeItem('guest-user'); }
+  else{ await sb.auth.signOut(); }
+  setState({user:null,view:'auth',conversations:[],messages:[],customGPTs:[],currentConvId:null,currentGPT:null,dropdownOpen:false});
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 📂  DATA LOADING
+// ═══════════════════════════════════════════════════════════════
+async function loadUserData(){
+  if(!S.user) return;
+  await Promise.all([loadConversations(), loadCustomGPTs()]);
+}
+
+async function loadConversations(){
+  const uid=S.user?.id; if(!uid) return;
+  if(S.user?.isGuest){ const c=await getCachedConvs(uid); setState({conversations:c}); return; }
+  try{
+    const{data,error}=await sb.from('conversations').select('*').eq('user_id',uid).order('updated_at',{ascending:false});
+    if(!error) setState({conversations:data||[]});
+    for(const cv of (data||[])){ await cacheConv(cv).catch(()=>{}); }
+  }catch{ const c=await getCachedConvs(uid); setState({conversations:c}); }
+}
+
+async function loadCustomGPTs(){
+  const uid=S.user?.id; if(!uid) return;
+  if(S.user?.isGuest){ setState({customGPTs:[]}); return; }
+  try{
+    const{data,error}=await sb.from('custom_gpts').select('*').or(`user_id.eq.${uid},is_public.eq.true`).order('created_at',{ascending:false});
+    if(!error) setState({customGPTs:data||[]});
+  }catch{ setState({customGPTs:[]}); }
+}
+
+async function loadMessages(convId){
+  if(!convId){ setState({messages:[]}); return; }
+  if(S.user?.isGuest){ const m=await getCachedMsgs(convId); setState({messages:m}); return; }
+  try{
+    const{data,error}=await sb.from('messages').select('*').eq('conversation_id',convId).order('created_at',{ascending:true});
+    if(error) throw error;
+    const msgs=await Promise.all((data||[]).map(async m=>{ const ids=await getMsgFiles(m.id); return ids.length?{...m,localFileIds:ids}:m; }));
+    setState({messages:msgs});
+  }catch{ const m=await getCachedMsgs(convId); setState({messages:m}); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 💬  CHAT
+// ═══════════════════════════════════════════════════════════════
+async function processFiles(files, convId){
+  const attachments=[];
+  for(const file of files){
+    try{
+      const meta=await storeFileLF(file,{conversationId:convId});
+      if(meta.type==='image'){
+        if(S.user?.isGuest||!navigator.onLine){
+          const b64=await fileToBase64(meta.id);
+          if(b64) attachments.push({name:file.name,mimeType:file.type,type:'image',base64:b64,localId:meta.id});
+        } else {
+          const safe=file.name.replace(/[^a-zA-Z0-9._\-]/g,'_');
+          const path=`${S.user.id}/chat/${Date.now()}_${safe}`;
+          const{data,error}=await sb.storage.from('chat-files').upload(path,file);
+          if(error){ const b64=await fileToBase64(meta.id); if(b64) attachments.push({name:file.name,mimeType:file.type,type:'image',base64:b64,localId:meta.id}); }
+          else{ const{data:s}=await sb.storage.from('chat-files').createSignedUrl(data.path,3600); attachments.push({name:file.name,mimeType:file.type,type:'image',url:s?.signedUrl,localId:meta.id}); }
+        }
+      } else if(meta.type==='text'){
+        attachments.push({name:file.name,mimeType:file.type,type:'text',textContent:meta.textContent,localId:meta.id});
+      } else {
+        attachments.push({name:file.name,mimeType:file.type,type:'other',localId:meta.id});
+      }
+    }catch(e){ console.error(e); toast(`파일 처리 실패: ${file.name}`,'error'); }
+  }
+  return attachments;
+}
+
+async function sendMessage(content, filesToSend=[]){
+  if(!S.user) return;
+  const trimmed=content.trim();
+  if(!trimmed&&filesToSend.length===0) return;
+  if(S.isStreaming) return;
+  if(!S.isOnline&&!S.user?.isGuest){ toast('오프라인 상태입니다','error'); return; }
+
+  let convId=S.currentConvId;
+  let savedMsgId=null;
+  const tempId=`temp-${Date.now()}`;
+  const isGuest=S.user?.isGuest===true;
+
+  // Determine system prompt / instructions
+  let sysPrompt=S.currentGPT?.system_prompt;
+  let instructions=S.currentGPT?.instructions;
+  if(convId&&!S.currentGPT){
+    const cv=S.conversations.find(c=>c.id===convId);
+    if(cv){ sysPrompt=cv.system_prompt; instructions=cv.instructions; }
+  }
+
+  // Create conversation if needed
+  if(!convId){
+    const title=trimmed.slice(0,50)||filesToSend[0]?.name||'새 대화';
+    if(isGuest){
+      const nc={id:`local-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,user_id:S.user.id,title,custom_gpt_id:S.currentGPT?.id||null,system_prompt:sysPrompt||'',instructions:instructions||'',created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+      convId=nc.id;
+      setState({conversations:[nc,...S.conversations],currentConvId:convId});
+      await cacheConv(nc).catch(()=>{});
+    } else {
+      const{data,error}=await sb.from('conversations').insert({user_id:S.user.id,title,custom_gpt_id:S.currentGPT?.id||null,system_prompt:sysPrompt||'',instructions:instructions||''}).select().single();
+      if(error){ toast('대화 생성 실패','error'); return; }
+      convId=data.id;
+      setState({conversations:[data,...S.conversations],currentConvId:convId});
+      await cacheConv(data).catch(()=>{});
+    }
+  }
+
+  // Process files
+  let chatAttachments=[];
+  if(filesToSend.length>0){ chatAttachments=await processFiles(filesToSend,convId); }
+  const localFileIds=chatAttachments.map(a=>a.localId).filter(Boolean);
+
+  // Build display content
+  const imgCnt=chatAttachments.filter(a=>a.type==='image').length;
+  const displayContent=trimmed||(imgCnt>0?`📷 이미지 ${imgCnt}개`:`📎 파일 ${filesToSend.length}개`);
+
+  const userMsg={id:tempId,conversation_id:convId,role:'user',content:displayContent,created_at:new Date().toISOString(),localFileIds:localFileIds.length>0?localFileIds:undefined};
+  const currentMsgs=[...S.messages,userMsg];
+  setState({messages:currentMsgs,isStreaming:true,streamingMsg:'',attachedFiles:[]});
+
+  // Save user message
+  if(isGuest){
+    savedMsgId=`msg-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
+    const savedMsg={...userMsg,id:savedMsgId};
+    await cacheMsgLF(savedMsg).catch(()=>{});
+    setState({messages:S.messages.map(m=>m.id===tempId?savedMsg:m)});
+  } else {
+    const{data,error}=await sb.from('messages').insert({conversation_id:convId,role:'user',content:displayContent}).select().single();
+    if(!error){
+      savedMsgId=data.id;
+      const savedMsg={...data,localFileIds:localFileIds.length>0?localFileIds:undefined};
+      await cacheMsgLF(savedMsg).catch(()=>{});
+      setState({messages:S.messages.map(m=>m.id===tempId?savedMsg:m)});
+    }
+  }
+
+  // Link files to message
+  if(localFileIds.length>0&&savedMsgId){ await setMsgFiles(savedMsgId,localFileIds).catch(()=>{}); }
+
+  // Stream from AI
+  try{
+    const{data:{session}}=await sb.auth.getSession();
+    const token=session?.access_token||(isGuest?'guest-token':'anon');
+    const resp=await fetch(EDGE_FUNCTION_URL,{
+      method:'POST',
+      headers:{'Authorization':`Bearer ${token}`,'Content-Type':'application/json'},
+      body:JSON.stringify({
+        messages:currentMsgs.map(m=>({role:m.role,content:m.content})),
+        systemPrompt:sysPrompt,instructions,
+        gptFiles:S.currentGPTFiles.length>0?S.currentGPTFiles:undefined,
+        chatAttachments:chatAttachments.length>0?chatAttachments:undefined,
+        lastUserContent:trimmed
+      })
+    });
+
+    if(!resp.ok){
+      let errMsg='AI 응답 실패';
+      try{ const t=await resp.text(); try{ const j=JSON.parse(t); errMsg=j.error||j.message||errMsg; }catch{ errMsg=t.slice(0,150)||errMsg; } }catch{}
+      if(resp.status===402) errMsg='AI 서비스 크레딧이 부족합니다. 관리자에게 문의하세요';
+      else if(resp.status===429) errMsg='요청이 너무 많습니다. 잠시 후 다시 시도해주세요';
+      else if(resp.status>=500) errMsg='서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요';
+      throw new Error(errMsg);
+    }
+
+    const reader=resp.body.getReader();
+    const dec=new TextDecoder();
+    let full='', buf='';
+    while(true){
+      const{done,value}=await reader.read();
+      if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split('\n'); buf=lines.pop()||'';
+      for(const line of lines){
+        if(!line.includes('data:')) continue;
+        const js=line.replace(/^data:\s*/,'').trim();
+        if(js==='[DONE]') continue;
+        try{ const p=JSON.parse(js); const d=p.choices?.[0]?.delta?.content||''; if(d){ full+=d; setState({streamingMsg:full}); } }catch{}
+      }
+    }
+
+    if(!full.trim()) throw new Error('AI가 응답을 생성하지 못했습니다');
+
+    // Save AI response
+    const aiMsgBase={id:`tmp-${Date.now()}`,conversation_id:convId,role:'assistant',content:full,created_at:new Date().toISOString()};
+    if(isGuest){
+      aiMsgBase.id=`msg-${Date.now()}-${Math.random().toString(36).slice(2,9)}`;
+      setState({messages:[...S.messages,aiMsgBase],streamingMsg:'',isStreaming:false});
+      await cacheMsgLF(aiMsgBase).catch(()=>{});
+    } else {
+      const{data,error}=await sb.from('messages').insert({conversation_id:convId,role:'assistant',content:full}).select().single();
+      const finalMsg=error?aiMsgBase:{...data};
+      setState({messages:[...S.messages,finalMsg],streamingMsg:'',isStreaming:false});
+      if(!error) await cacheMsgLF(finalMsg).catch(()=>{});
+    }
+
+    // Update conversation title on first message
+    if(currentMsgs.length===1){
+      const newTitle=trimmed.slice(0,50)||displayContent.slice(0,50);
+      if(!isGuest){ sb.from('conversations').update({title:newTitle,updated_at:new Date().toISOString()}).eq('id',convId).then(()=>{}); }
+      setState({conversations:S.conversations.map(c=>c.id===convId?{...c,title:newTitle,updated_at:new Date().toISOString()}:c)});
+    }
+
+  } catch(err){
+    console.error('sendMessage error:', err);
+    setState({isStreaming:false,streamingMsg:''});
+    if(!savedMsgId) setState({messages:S.messages.filter(m=>m.id!==tempId)});
+    toast(err.message||'메시지 전송에 실패했습니다','error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🤖  GPT BUILDER
+// ═══════════════════════════════════════════════════════════════
+let gptBuilderFiles=[]; // tmp before save
+
+async function saveGPT(formData){
+  const uid=S.user?.id;
+  if(!uid||S.user?.isGuest){ toast('GPT 저장은 로그인 후 이용 가능합니다','error'); return; }
+  const editing=S.gptBuilderEditing;
+  try{
+    if(editing){
+      const{data,error}=await sb.from('custom_gpts').update({name:formData.name,description:formData.description,system_prompt:formData.systemPrompt,instructions:formData.instructions,avatar_url:formData.avatarUrl||null,is_public:formData.isPublic,updated_at:new Date().toISOString()}).eq('id',editing.id).select().single();
+      if(error) throw error;
+      // Save new files
+      for(const f of gptBuilderFiles){
+        if(!f.custom_gpt_id){
+          await sb.from('custom_gpt_files').insert({custom_gpt_id:editing.id,file_name:f.file_name,file_url:f.file_url||'',file_path:f.file_path||'',file_size:f.file_size,mime_type:f.mime_type,file_content:f.file_content}).then(()=>{});
+        }
+      }
+      setState({customGPTs:S.customGPTs.map(g=>g.id===editing.id?data:g),gptBuilderOpen:false,gptBuilderEditing:null});
+      toast('커스텀 GPT가 수정되었습니다','success');
+    } else {
+      const{data,error}=await sb.from('custom_gpts').insert({user_id:uid,name:formData.name,description:formData.description,system_prompt:formData.systemPrompt,instructions:formData.instructions,avatar_url:formData.avatarUrl||null,is_public:formData.isPublic}).select().single();
+      if(error) throw error;
+      for(const f of gptBuilderFiles){
+        await sb.from('custom_gpt_files').insert({custom_gpt_id:data.id,file_name:f.file_name,file_url:f.file_url||'',file_path:f.file_path||'',file_size:f.file_size,mime_type:f.mime_type,file_content:f.file_content}).then(()=>{});
+      }
+      setState({customGPTs:[data,...S.customGPTs],gptBuilderOpen:false});
+      toast('커스텀 GPT가 생성되었습니다','success');
+    }
+    gptBuilderFiles=[];
+  }catch(e){ toast('저장에 실패했습니다: '+e.message,'error'); }
+}
+
+async function deleteGPT(id){
+  if(!confirm('이 커스텀 GPT를 삭제하시겠습니까?')) return;
+  const{error}=await sb.from('custom_gpts').delete().eq('id',id);
+  if(error){ toast('삭제 실패','error'); return; }
+  setState({customGPTs:S.customGPTs.filter(g=>g.id!==id)});
+  toast('커스텀 GPT가 삭제되었습니다','success');
+}
+
+async function startGPTChat(gpt){
+  setState({currentGPT:gpt});
+  try{
+    const{data,error}=await sb.from('custom_gpt_files').select('*').eq('custom_gpt_id',gpt.id);
+    if(!error) setState({currentGPTFiles:data||[]});
+  }catch{}
+  if(S.user?.isGuest){
+    const nc={id:`local-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,user_id:S.user.id,title:`${gpt.name} 대화`,custom_gpt_id:gpt.id,system_prompt:gpt.system_prompt,instructions:gpt.instructions,created_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+    setState({conversations:[nc,...S.conversations],currentConvId:nc.id,messages:[]});
+    await cacheConv(nc).catch(()=>{});
+  } else {
+    const{data,error}=await sb.from('conversations').insert({user_id:S.user.id,title:`${gpt.name} 대화`,custom_gpt_id:gpt.id,system_prompt:gpt.system_prompt,instructions:gpt.instructions}).select().single();
+    if(!error){ setState({conversations:[data,...S.conversations],currentConvId:data.id,messages:[]}); await cacheConv(data).catch(()=>{}); }
+  }
+  toast(`${gpt.name}과(와) 대화를 시작합니다`,'success');
+}
+
+async function deleteConv(id){
+  if(S.user?.isGuest){ await delCachedConv(id); }
+  else{ await sb.from('conversations').delete().eq('id',id).then(()=>{}); }
+  const next=S.currentConvId===id?null:S.currentConvId;
+  setState({conversations:S.conversations.filter(c=>c.id!==id),currentConvId:next,messages:next?S.messages:[]});
+  toast('대화가 삭제되었습니다','success');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🎨  RENDER HELPERS
+// ═══════════════════════════════════════════════════════════════
+function iconSvg(name,size=16){
+  // Use lucide if available
+  if(window.lucide&&window.lucide[name]){
+    const tmp=document.createElement('div');
+    tmp.innerHTML=window.lucide.createIcons&&window.lucide.icons?'':'';
+    // fallback: emoji map
+  }
+  const icons={
+    Plus:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    MessageSquare:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    Trash2:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+    Bot:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/><circle cx="12" cy="5" r="1"/><circle cx="8.5" cy="15" r="1.5"/><circle cx="15.5" cy="15" r="1.5"/></svg>',
+    User:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    LogOut:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+    Send:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+    Paperclip:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
+    X:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    Edit2:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>',
+    Upload:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>',
+    FileText:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
+    MessageSquarePlus:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>',
+    Wrench:'<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  };
+  return (icons[name]||`<svg xmlns="http://www.w3.org/2000/svg" width="SIZE" height="SIZE" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>`).replaceAll('SIZE',size);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🖼️  RENDER
+// ═══════════════════════════════════════════════════════════════
+const app=document.getElementById('app');
+
+function render(){
+  if(S.loading){
+    document.getElementById('loading-screen').classList.remove('hidden');
+    app.innerHTML='';
+    return;
+  }
+  document.getElementById('loading-screen').classList.add('hidden');
+
+  if(S.view==='auth'){ renderAuth(); return; }
+  renderMain();
+}
+
+// ── AUTH PAGE ────────────────────────────────────────────────
+let authState={isLogin:true,email:'',pw:'',otp:'',otpSent:false,loading:false};
+
+function renderAuth(){
+  app.innerHTML=`
+  <div id="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">${iconSvg('MessageSquare',24)}</div>
+      <div class="auth-title" id="auth-title">${authState.isLogin?'로그인':'회원가입'}</div>
+      <div class="auth-sub">ChatGPT 스타일 AI 채팅을 시작하세요</div>
+      <button class="auth-btn outline" id="btn-guest">게스트로 바로 시작하기</button>
+      <div class="auth-divider"><span>또는</span></div>
+      <input class="auth-input" type="email" id="auth-email" placeholder="이메일" value="${authState.email}" ${authState.loading||authState.otpSent?'disabled':''}>
+      <div id="auth-extra"></div>
+      <div class="auth-switch" id="auth-switch">${authState.isLogin?'계정이 없으신가요? 회원가입':'이미 계정이 있으신가요? 로그인'}</div>
+    </div>
+  </div>`;
+
+  renderAuthExtra();
+  bindAuth();
+}
+
+function renderAuthExtra(){
+  const el=document.getElementById('auth-extra');
+  if(!el) return;
+  if(authState.isLogin){
+    el.innerHTML=`
+      <input class="auth-input" type="password" id="auth-pw" placeholder="비밀번호" value="${authState.pw}" ${authState.loading?'disabled':''}>
+      <button class="auth-btn primary" id="btn-login" ${authState.loading?'disabled':''}>
+        ${authState.loading?'로그인 중...':'로그인'}
+      </button>`;
+    el.querySelector('#auth-pw').addEventListener('input',e=>{ authState.pw=e.target.value; });
+    el.querySelector('#btn-login').addEventListener('click',doLogin);
+  } else if(!authState.otpSent){
+    el.innerHTML=`<button class="auth-btn primary" id="btn-otp" ${authState.loading?'disabled':''}>
+      ${authState.loading?'전송 중...':'인증 코드 받기'}
+    </button>`;
+    el.querySelector('#btn-otp').addEventListener('click',doSendOtp);
+  } else {
+    el.innerHTML=`
+      <input class="auth-input" placeholder="인증 코드 (4자리)" id="auth-otp" maxlength="4" value="${authState.otp}" ${authState.loading?'disabled':''}>
+      <input class="auth-input" type="password" id="auth-pw2" placeholder="비밀번호 설정" value="${authState.pw}" ${authState.loading?'disabled':''}>
+      <button class="auth-btn primary" id="btn-register" ${authState.loading?'disabled':''}>
+        ${authState.loading?'가입 중...':'회원가입 완료'}
+      </button>`;
+    el.querySelector('#auth-otp').addEventListener('input',e=>{ authState.otp=e.target.value; });
+    el.querySelector('#auth-pw2').addEventListener('input',e=>{ authState.pw=e.target.value; });
+    el.querySelector('#btn-register').addEventListener('click',doRegister);
+  }
+}
+
+function bindAuth(){
+  document.getElementById('btn-guest')?.addEventListener('click',doGuestLogin);
+  document.getElementById('auth-email')?.addEventListener('input',e=>{ authState.email=e.target.value; });
+  document.getElementById('auth-switch')?.addEventListener('click',()=>{
+    authState.isLogin=!authState.isLogin; authState.otpSent=false; authState.otp='';
+    renderAuth();
+  });
+}
+
+async function doSendOtp(){
+  authState.loading=true; renderAuthExtra();
+  const{error}=await sb.auth.signInWithOtp({email:authState.email,options:{shouldCreateUser:true}});
+  authState.loading=false;
+  if(error){ toast(error.message,'error'); renderAuthExtra(); return; }
+  authState.otpSent=true; toast('인증 코드가 이메일로 전송되었습니다','success'); renderAuthExtra();
+}
+
+async function doRegister(){
+  authState.loading=true; renderAuthExtra();
+  const{data,error}=await sb.auth.verifyOtp({email:authState.email,token:authState.otp,type:'email'});
+  if(error){ authState.loading=false; toast(error.message,'error'); renderAuthExtra(); return; }
+  const{error:ue}=await sb.auth.updateUser({password:authState.pw,data:{username:authState.email.split('@')[0]}});
+  if(ue){ authState.loading=false; toast(ue.message,'error'); renderAuthExtra(); return; }
+  setState({user:mapUser(data.user),view:'chat'}); authState.loading=false;
+  await loadUserData();
+}
+
+async function doLogin(){
+  authState.loading=true; renderAuthExtra();
+  const{data,error}=await sb.auth.signInWithPassword({email:authState.email,password:authState.pw});
+  if(error){ authState.loading=false; toast(error.message,'error'); renderAuthExtra(); return; }
+  setState({user:mapUser(data.user),view:'chat'}); authState.loading=false;
+  await loadUserData();
+}
+
+// ── MAIN LAYOUT ──────────────────────────────────────────────
+function renderMain(){
+  app.innerHTML=`
+  <div id="main-layout">
+    <div id="sidebar">
+      <div class="sidebar-top">
+        <button class="btn-new-chat" id="btn-new-chat">
+          ${iconSvg('Plus',16)} 새 채팅
+        </button>
+      </div>
+      <div id="gpt-section" class="gpt-section"></div>
+      <div class="sidebar-section" id="conv-list">
+        <div class="sidebar-label">최근 대화</div>
+      </div>
+    </div>
+    <div id="content-area">
+      <div id="header">
+        <div class="header-title">
+          ${iconSvg('MessageSquare',20)}
+          AI Chat
+          ${S.user?.isGuest?'<span class="guest-badge">게스트 모드</span>':''}
+        </div>
+        <div class="header-right">
+          <button class="user-btn" id="user-btn" title="${S.user?.username||''}">
+            ${S.user?.avatar?`<img src="${S.user.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`:(S.user?.username||'?').charAt(0).toUpperCase()}
+          </button>
+          <div class="dropdown ${S.dropdownOpen?'open':''}" id="user-dropdown">
+            <div class="dropdown-header">
+              <div class="dropdown-user-name">${S.user?.username||''}</div>
+              <div class="dropdown-user-email">${S.user?.email||''}</div>
+            </div>
+            <div class="dropdown-item" id="dd-queue">${iconSvg('MessageSquarePlus',14)} 대기 메시지 전송</div>
+            <div class="dropdown-sep"></div>
+            <div class="dropdown-item danger" id="dd-logout">${iconSvg('LogOut',14)} 로그아웃</div>
+          </div>
+        </div>
+      </div>
+      <div id="gpt-banner" class="${S.currentGPT?'visible':''}">
+        ${S.currentGPT?`
+          <div class="gpt-banner-avatar">
+            ${S.currentGPT.avatar_url?`<img src="${S.currentGPT.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`:(S.currentGPT.name[0]||'?')}
+          </div>
+          <div>
+            <div style="font-weight:600;">${S.currentGPT.name}</div>
+            ${S.currentGPT.description?`<div style="font-size:13px;color:rgba(255,255,255,0.6);">${S.currentGPT.description}</div>`:''}
+          </div>`:''}
+      </div>
+      <div id="messages-area">
+        ${S.messages.length===0&&!S.currentConvId?renderEmptyState():'<div class="messages-inner" id="messages-inner"></div>'}
+      </div>
+      <div id="chat-input-area">
+        <div class="input-wrap">
+          <div id="file-previews"></div>
+          <div class="input-box">
+            <button class="input-box-btn" id="btn-attach" title="파일 첨부" ${S.isStreaming?'disabled':''}>
+              ${iconSvg('Paperclip',20)}
+            </button>
+            <input type="file" id="file-input" multiple style="display:none;">
+            <textarea id="msg-input" rows="1"
+              placeholder="${S.attachedFiles.length>0?'파일에 대해 질문하거나 Enter로 전송...':'메시지를 입력하세요...'}"
+              ${S.isStreaming?'disabled':''}
+              style="height:auto;min-height:24px;"></textarea>
+            <button class="send-btn" id="btn-send" ${S.isStreaming?'disabled':''} title="전송">
+              ${iconSvg('Send',15)}
+            </button>
+          </div>
+          <div class="input-hint">이미지·PDF·텍스트 등 모든 파일 첨부 지원 · Enter로 전송, Shift+Enter로 줄바꿈</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay hidden" id="gpt-modal"></div>
+  `;
+
+  renderConvList();
+  renderGPTSection();
+  renderMessages();
+  renderFilePreviews();
+  bindMain();
+  if(S.gptBuilderOpen) renderGPTModal();
+}
+
+function renderEmptyState(){
+  return `<div id="empty-state">
+    <div class="empty-logo">${iconSvg('MessageSquare',28)}</div>
+    <div class="empty-title">무엇이든 물어보세요</div>
+    <div class="empty-sub">AI와 자유롭게 대화하세요. 이미지와 파일도 첨부할 수 있습니다.</div>
+  </div>`;
+}
+
+function renderConvList(){
+  const el=document.getElementById('conv-list'); if(!el) return;
+  let html=`<div class="sidebar-label">최근 대화</div>`;
+  if(S.conversations.length===0){ html+=`<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:16px 8px;">아직 대화가 없습니다</div>`; }
+  for(const cv of S.conversations){
+    html+=`<div class="conv-item ${S.currentConvId===cv.id?'active':''}" data-cid="${cv.id}">
+      ${iconSvg('MessageSquare',14)}
+      <span class="conv-item-title">${escHtml(cv.title||'새 대화')}</span>
+      <button class="conv-item-del" data-del="${cv.id}" title="삭제">${iconSvg('Trash2',13)}</button>
+    </div>`;
+  }
+  el.innerHTML=html;
+  el.querySelectorAll('.conv-item').forEach(item=>{
+    item.addEventListener('click',e=>{ if(e.target.closest('[data-del]')) return; const cid=item.dataset.cid; setState({currentConvId:cid}); loadMessages(cid); });
+  });
+  el.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click',e=>{ e.stopPropagation(); deleteConv(btn.dataset.del); });
+  });
+}
+
+function renderGPTSection(){
+  const el=document.getElementById('gpt-section'); if(!el) return;
+  const canCreate=!S.user?.isGuest;
+  let html=`<div class="gpt-header">
+    <span class="gpt-header-title">${iconSvg('Bot',16)} 커스텀 GPT</span>
+    ${canCreate?`<button class="btn-create-gpt" id="btn-create-gpt">+ 만들기</button>`:''}
+  </div>`;
+  if(S.customGPTs.length===0){
+    html+=`<div class="gpt-empty">${canCreate?'아직 커스텀 GPT가 없습니다<br>위 버튼을 눌러 만들어보세요!':'게스트 모드에서는 커스텀 GPT를 사용할 수 없습니다'}</div>`;
+  } else {
+    for(const g of S.customGPTs){
+      html+=`<div class="gpt-item" data-gid="${g.id}">
+        <div class="gpt-avatar">${g.avatar_url?`<img src="${g.avatar_url}" alt="${escHtml(g.name)}">`:(g.name[0]||'?')}</div>
+        <div class="gpt-info">
+          <div class="gpt-name">${escHtml(g.name)}</div>
+          ${g.description?`<div class="gpt-desc">${escHtml(g.description)}</div>`:''}
+        </div>
+        <div class="gpt-actions">
+          <button class="gpt-action-btn" data-gpt-chat="${g.id}" title="대화 시작">${iconSvg('MessageSquarePlus',14)}</button>
+          <button class="gpt-action-btn" data-gpt-edit="${g.id}" title="수정">${iconSvg('Edit2',14)}</button>
+          <button class="gpt-action-btn" data-gpt-del="${g.id}" title="삭제" style="color:var(--danger)">${iconSvg('Trash2',14)}</button>
+        </div>
+      </div>`;
+    }
+  }
+  el.innerHTML=html;
+  document.getElementById('btn-create-gpt')?.addEventListener('click',()=>{ gptBuilderFiles=[]; setState({gptBuilderOpen:true,gptBuilderEditing:null}); renderGPTModal(); });
+  el.querySelectorAll('[data-gpt-chat]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); const g=S.customGPTs.find(x=>x.id===b.dataset.gptChat); if(g) startGPTChat(g); }));
+  el.querySelectorAll('[data-gpt-edit]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); const g=S.customGPTs.find(x=>x.id===b.dataset.gptEdit); if(g){ gptBuilderFiles=[]; setState({gptBuilderOpen:true,gptBuilderEditing:g}); renderGPTModal(); } }));
+  el.querySelectorAll('[data-gpt-del]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); deleteGPT(b.dataset.gptDel); }));
+  el.querySelectorAll('.gpt-item').forEach(item=>{ item.addEventListener('click',()=>{ const g=S.customGPTs.find(x=>x.id===item.dataset.gid); if(g) startGPTChat(g); }); });
+}
+
+// Messages render (incremental append)
+const _renderedMsgIds=new Set();
+function renderMessages(){
+  const area=document.getElementById('messages-area'); if(!area) return;
+  const allMsgs=[...S.messages];
+  if(S.streamingMsg) allMsgs.push({id:'__streaming__',conversation_id:S.currentConvId,role:'assistant',content:S.streamingMsg,created_at:new Date().toISOString(),_streaming:true});
+
+  if(allMsgs.length===0){
+    area.innerHTML=renderEmptyState(); _renderedMsgIds.clear(); return;
+  }
+
+  // Ensure messages-inner exists
+  let inner=document.getElementById('messages-inner');
+  if(!inner||area.querySelector('#empty-state')){
+    area.innerHTML='<div class="messages-inner" id="messages-inner"></div>';
+    inner=document.getElementById('messages-inner');
+    _renderedMsgIds.clear();
+  }
+
+  // Remove old streaming element
+  const oldStream=inner.querySelector('[data-streaming]');
+  if(oldStream&&!S.streamingMsg) oldStream.remove();
+
+  // Append new messages
+  for(const msg of allMsgs){
+    if(_renderedMsgIds.has(msg.id)) {
+      // Update streaming message
+      if(msg.id==='__streaming__'){
+        const el=inner.querySelector('[data-streaming]');
+        if(el){ el.querySelector('.msg-text').textContent=msg.content; }
+      }
+      continue;
+    }
+    _renderedMsgIds.add(msg.id);
+    const el=createMsgEl(msg);
+    inner.appendChild(el);
+    if(msg.localFileIds?.length>0) loadMsgFiles(msg.id, el);
+  }
+
+  // Scroll to bottom
+  area.scrollTop=area.scrollHeight;
+}
+
+function createMsgEl(msg){
+  const div=document.createElement('div');
+  div.className=`message ${msg.role}`;
+  div.setAttribute('data-mid',msg.id);
+  if(msg._streaming) div.setAttribute('data-streaming','1');
+  const avatarClass=msg.role==='user'?'user':'assistant';
+  const avatarIcon=msg.role==='user'?iconSvg('User',16):iconSvg('Bot',16);
+  div.innerHTML=`<div class="message-inner">
+    <div class="msg-avatar ${avatarClass}">${avatarIcon}</div>
+    <div class="msg-body">
+      <div class="msg-files" data-files-placeholder></div>
+      <div class="msg-text">${escHtml(msg.content)}${msg._streaming?'<span class="msg-cursor"></span>':''}</div>
+    </div>
+  </div>`;
+  return div;
+}
+
+async function loadMsgFiles(msgId, msgEl){
+  const metas=await getMsgFileMetas(msgId);
+  if(!metas.length) return;
+  const fp=msgEl.querySelector('[data-files-placeholder]');
+  if(!fp) return;
+  fp.innerHTML='';
+  for(const meta of metas){
+    if(meta.type==='image'){
+      const url=await createObjUrl(meta.id);
+      if(url){
+        const d=document.createElement('div'); d.className='msg-img-thumb';
+        const img=document.createElement('img'); img.src=url; img.alt=meta.name;
+        d.appendChild(img); fp.appendChild(d);
+      }
+    } else {
+      const d=document.createElement('div'); d.className='msg-file-chip';
+      d.innerHTML=`${iconSvg('FileText',14)}<div><div class="fc-name">${escHtml(meta.name)}</div><div class="fc-size">${fmtSize(meta.size)}</div></div>`;
+      fp.appendChild(d);
+    }
+  }
+}
+
+function renderFilePreviews(){
+  const el=document.getElementById('file-previews'); if(!el) return;
+  el.innerHTML='';
+  for(const lf of S.attachedFiles){
+    const d=document.createElement('div');
+    if(lf.previewUrl){
+      d.className='fp-img';
+      d.innerHTML=`<img src="${lf.previewUrl}" alt="${escHtml(lf.file.name)}">
+        <div class="fp-img-name">${escHtml(lf.file.name)}</div>
+        <button class="fp-remove" data-fid="${lf.id}">×</button>`;
+    } else {
+      d.className='fp-chip';
+      d.innerHTML=`${iconSvg('FileText',14)}
+        <div><div class="fp-chip-name">${escHtml(lf.file.name)}</div><div class="fp-chip-size">${fmtSize(lf.file.size)}</div></div>
+        <button class="fp-remove" data-fid="${lf.id}" style="position:static;background:none;color:var(--text-muted)">×</button>`;
+    }
+    d.querySelector('[data-fid]').addEventListener('click',()=>{ removeAttachedFile(lf.id); });
+    el.appendChild(d);
+  }
+}
+
+function removeAttachedFile(id){
+  const f=S.attachedFiles.find(x=>x.id===id);
+  if(f?.previewUrl) URL.revokeObjectURL(f.previewUrl);
+  setState({attachedFiles:S.attachedFiles.filter(x=>x.id!==id)});
+}
+
+// ── GPT MODAL ────────────────────────────────────────────────
+let gptModalFiles=[]; // runtime pending files for modal display
+
+function renderGPTModal(){
+  const overlay=document.getElementById('gpt-modal'); if(!overlay) return;
+  const editing=S.gptBuilderEditing;
+  overlay.classList.remove('hidden');
+  overlay.innerHTML=`<div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">${editing?'커스텀 GPT 수정':'새 커스텀 GPT 만들기'}</div>
+      <button class="modal-close" id="modal-close">${iconSvg('X',20)}</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">이름<span class="req">*</span></label>
+        <input class="form-input" id="gf-name" placeholder="예: 코딩 전문가" value="${escHtml(editing?.name||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">설명</label>
+        <input class="form-input" id="gf-desc" placeholder="이 GPT가 무엇을 하는지 간단히 설명하세요" value="${escHtml(editing?.description||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">시스템 프롬프트<span class="req">*</span></label>
+        <textarea class="form-input form-textarea" id="gf-sys" placeholder="AI의 역할과 성격을 정의하세요">${escHtml(editing?.system_prompt||'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">지침<span class="req">*</span></label>
+        <textarea class="form-input form-textarea" id="gf-inst" placeholder="구체적인 행동 지침을 작성하세요">${escHtml(editing?.instructions||'')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">아바타 URL (선택)</label>
+        <input class="form-input" id="gf-avatar" type="url" placeholder="https://example.com/avatar.png" value="${escHtml(editing?.avatar_url||'')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">파일 첨부 (선택)</label>
+        <input type="file" id="gf-file-input" multiple style="display:none;">
+        <div class="upload-zone" id="upload-zone">${iconSvg('Upload',24)}<div class="upload-zone-text">파일을 클릭하여 업로드</div><div class="upload-zone-hint">텍스트·코드·이미지·PDF 등 모든 형식 지원</div></div>
+        <div class="file-list" id="gf-file-list"></div>
+      </div>
+      <div class="form-group">
+        <div class="checkbox-row">
+          <input type="checkbox" id="gf-public" ${editing?.is_public?'checked':''}>
+          <label for="gf-public" style="font-size:13px;">이 GPT를 다른 사용자와 공유</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" id="modal-cancel">취소</button>
+        <button class="btn-save" id="modal-save">${editing?'수정':'생성'}</button>
+      </div>
+    </div>
+  </div>`;
+
+  gptModalFiles=editing?[...gptBuilderFiles]:[...gptBuilderFiles];
+  renderGPTFileList();
+
+  document.getElementById('modal-close').addEventListener('click',()=>{ overlay.classList.add('hidden'); setState({gptBuilderOpen:false,gptBuilderEditing:null}); });
+  document.getElementById('modal-cancel').addEventListener('click',()=>{ overlay.classList.add('hidden'); setState({gptBuilderOpen:false,gptBuilderEditing:null}); });
+  overlay.addEventListener('click',e=>{ if(e.target===overlay){ overlay.classList.add('hidden'); setState({gptBuilderOpen:false,gptBuilderEditing:null}); } });
+  document.getElementById('upload-zone').addEventListener('click',()=>document.getElementById('gf-file-input').click());
+  document.getElementById('gf-file-input').addEventListener('change',handleGPTFileUpload);
+  document.getElementById('modal-save').addEventListener('click',()=>{
+    const formData={
+      name:document.getElementById('gf-name').value.trim(),
+      description:document.getElementById('gf-desc').value.trim(),
+      systemPrompt:document.getElementById('gf-sys').value.trim(),
+      instructions:document.getElementById('gf-inst').value.trim(),
+      avatarUrl:document.getElementById('gf-avatar').value.trim(),
+      isPublic:document.getElementById('gf-public').checked,
+    };
+    if(!formData.name||!formData.systemPrompt||!formData.instructions){ toast('이름, 시스템 프롬프트, 지침은 필수입니다','error'); return; }
+    gptBuilderFiles=[...gptModalFiles];
+    saveGPT(formData);
+    overlay.classList.add('hidden');
+  });
+}
+
+function renderGPTFileList(){
+  const el=document.getElementById('gf-file-list'); if(!el) return;
+  el.innerHTML='';
+  for(let i=0;i<gptModalFiles.length;i++){
+    const f=gptModalFiles[i];
+    const d=document.createElement('div'); d.className='file-list-item';
+    d.innerHTML=`${iconSvg('FileText',16)}<div class="file-list-name">${escHtml(f.file_name)}</div><span class="file-list-size">${fmtSize(f.file_size)}</span><button class="file-list-del" data-idx="${i}" title="삭제">${iconSvg('Trash2',14)}</button>`;
+    d.querySelector('[data-idx]').addEventListener('click',()=>{ gptModalFiles.splice(i,1); renderGPTFileList(); });
+    el.appendChild(d);
+  }
+}
+
+async function handleGPTFileUpload(e){
+  const files=Array.from(e.target.files||[]); if(!files.length) return;
+  if(S.user?.isGuest){ toast('파일 업로드는 로그인 후 이용 가능합니다','error'); return; }
+  const btn=document.getElementById('modal-save'); if(btn) btn.disabled=true;
+  for(const file of files){
+    try{
+      const safe=file.name.replace(/[^a-zA-Z0-9._\-가-힣]/g,'_');
+      const path=`${S.user.id}/gpt-files/${Date.now()}_${safe}`;
+      const{data,error}=await sb.storage.from('chat-files').upload(path,file);
+      if(error){ toast(`${file.name} 업로드 실패: ${error.message}`,'error'); continue; }
+      const{data:sd}=await sb.storage.from('chat-files').createSignedUrl(data.path,60*60*24*365);
+      let fc; try{ fc=await file.text(); if(fc.length>50000) fc=fc.slice(0,50000)+'\n...(생략)'; }catch{}
+      const TEXT_EXT2=new Set(['txt','md','csv','json','log','xml','yaml','yml','ts','tsx','js','jsx','py','css','html','sh','env']);
+      const ext=file.name.split('.').pop()?.toLowerCase()||'';
+      if(!file.type.startsWith('text/')&&!TEXT_EXT2.has(ext)) fc=undefined;
+      gptModalFiles.push({id:crypto.randomUUID(),custom_gpt_id:'',file_name:file.name,file_url:sd?.signedUrl||'',file_path:data.path,file_size:file.size,mime_type:file.type||'application/octet-stream',file_content:fc,created_at:new Date().toISOString()});
+      toast(`${file.name} 업로드 완료`,'success');
+    }catch(err){ toast(`${file.name}: ${err.message}`,'error'); }
   }
   if(btn) btn.disabled=false;
   renderGPTFileList();
+  if(e.target) e.target.value='';
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 🔗  BIND MAIN & UTILS
-// ═══════════════════════════════════════════════════════════════
-
-function escHtml(str){
-  if(!str) return '';
-  return String(str)
-    .replace(/&/g,'&amp;')
-    .replace(/\u003C/g,'&lt;')
-    .replace(/\u003E/g,'&gt;')
-    .replace(/"/g,'&quot;')
-    .replace(/'/g,'&#039;');
-}
-
+// ── BIND MAIN EVENTS ─────────────────────────────────────────
 function bindMain(){
-  // 새 채팅
-  document.getElementById('btn-new-chat')?.addEventListener('click', ()=>{
-    setState({currentConvId: null, messages: [], currentGPT: null, attachedFiles: []});
+  // New chat
+  document.getElementById('btn-new-chat')?.addEventListener('click',()=>{
+    _renderedMsgIds.clear();
+    setState({currentConvId:null,messages:[],streamingMsg:'',currentGPT:null,currentGPTFiles:[]});
   });
 
-  // 사용자 드롭다운 토글
-  document.getElementById('user-btn')?.addEventListener('click', (e)=>{
-    e.stopPropagation();
-    setState({dropdownOpen: !S.dropdownOpen});
+  // User dropdown
+  document.getElementById('user-btn')?.addEventListener('click',e=>{ e.stopPropagation(); setState({dropdownOpen:!S.dropdownOpen}); });
+  document.addEventListener('click',()=>{ if(S.dropdownOpen) setState({dropdownOpen:false}); },{once:true});
+  document.getElementById('dd-logout')?.addEventListener('click',doLogout);
+  document.getElementById('dd-queue')?.addEventListener('click',()=>{ setState({dropdownOpen:false}); toast('오프라인 큐 처리 완료','info'); });
+
+  // File attach
+  document.getElementById('btn-attach')?.addEventListener('click',()=>document.getElementById('file-input').click());
+  document.getElementById('file-input')?.addEventListener('change',e=>{
+    const files=Array.from(e.target.files||[]);
+    const newFiles=files.map(f=>({id:`${Date.now()}-${Math.random().toString(36).slice(2,6)}`,file:f,previewUrl:f.type.startsWith('image/')?URL.createObjectURL(f):undefined}));
+    setState({attachedFiles:[...S.attachedFiles,...newFiles]});
+    if(e.target) e.target.value='';
   });
 
-  // 드롭다운 외부 클릭 시 닫기
-  document.addEventListener('click', (e)=>{
-    if(S.dropdownOpen && !e.target.closest('.header-right')){
-      setState({dropdownOpen: false});
-    }
-  });
+  // Send button
+  document.getElementById('btn-send')?.addEventListener('click',doSend);
 
-  // 로그아웃
-  document.getElementById('dd-logout')?.addEventListener('click', doLogout);
-
-  // 메시지 입력창 자동 높이 조절 및 전송 버튼 활성화
-  const input = document.getElementById('msg-input');
-  const btnSend = document.getElementById('btn-send');
-  const btnAttach = document.getElementById('btn-attach');
-  const fileInput = document.getElementById('file-input');
-
-  if(input){
-    input.addEventListener('input', function(){
-      this.style.height = 'auto';
-      this.style.height = Math.min(this.scrollHeight, 180) + 'px';
-      if(btnSend) btnSend.disabled = !this.value.trim() && S.attachedFiles.length === 0;
-    });
-
-    input.addEventListener('keydown', (e)=>{
-      if(e.key === 'Enter' && !e.shiftKey){
-        e.preventDefault();
-        if(btnSend && !btnSend.disabled && !S.isStreaming){
-          btnSend.click();
-        }
-      }
-    });
+  // Textarea
+  const ta=document.getElementById('msg-input');
+  if(ta){
+    ta.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); doSend(); } });
+    ta.addEventListener('input',e=>{ const el=e.target; el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,180)+'px'; });
   }
 
-  // 메시지 전송
-  if(btnSend){
-    btnSend.addEventListener('click', ()=>{
-      if(S.isStreaming) return;
-      const text = input ? input.value : '';
-      const files = S.attachedFiles.map(af => af.file);
-      sendMessage(text, files);
-    });
-  }
+  // Close dropdown on outside click
+  document.getElementById('content-area')?.addEventListener('click',()=>{ if(S.dropdownOpen) setState({dropdownOpen:false}); });
+}
 
-  // 파일 첨부
-  if(btnAttach && fileInput){
-    btnAttach.addEventListener('click', ()=>fileInput.click());
-    fileInput.addEventListener('change', (e)=>{
-      const files = Array.from(e.target.files||[]);
-      if(!files.length) return;
-      
-      const newFiles = files.map(f => {
-        const isImg = f.type.startsWith('image/');
-        return {
-          id: `af-${Date.now()}-${Math.random().toString(36).slice(2,9)}`,
-          file: f,
-          previewUrl: isImg ? URL.createObjectURL(f) : null
-        };
-      });
-      
-      setState({attachedFiles: [...S.attachedFiles, ...newFiles]});
-      fileInput.value = ''; // 초기화
-      
-      if(input && btnSend) {
-         btnSend.disabled = !input.value.trim() && (S.attachedFiles.length + newFiles.length) === 0;
-      }
-    });
-  }
-
-  // 브라우저 오버레이 제어 (해당 UI가 DOM에 있는 경우)
-  document.getElementById('brow-back')?.addEventListener('click', ()=>{
-    document.getElementById('brow')?.classList.remove('open');
-  });
-  document.getElementById('brow-reload')?.addEventListener('click', ()=>{
-    const iframe = document.getElementById('brow-iframe');
-    if(iframe) iframe.src = iframe.src;
-  });
-  document.getElementById('brow-newtab')?.addEventListener('click', ()=>{
-    const iframe = document.getElementById('brow-iframe');
-    if(iframe && iframe.src) window.open(iframe.src, '_blank');
-  });
+function doSend(){
+  const ta=document.getElementById('msg-input');
+  const content=ta?.value||'';
+  const files=S.attachedFiles.map(f=>f.file);
+  // Revoke preview URLs
+  S.attachedFiles.forEach(f=>{ if(f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+  if(ta) ta.value='';
+  if(ta){ ta.style.height='auto'; }
+  sendMessage(content,files);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 🚀  APP INITIALIZATION
+// 🔧  UTILS
 // ═══════════════════════════════════════════════════════════════
-initAuth();
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// Override render to do targeted updates after initial render
+const _fullRenderView = render;
+function render(){
+  if(S.loading){ document.getElementById('loading-screen').classList.remove('hidden'); return; }
+  document.getElementById('loading-screen').classList.add('hidden');
+  if(S.view==='auth'){ app.innerHTML=''; renderAuth(); return; }
+  // Check if we need full re-render
+  if(!document.getElementById('main-layout')){ app.innerHTML=''; _renderedMsgIds.clear(); renderMain(); return; }
+  // Targeted updates
+  updateConvList(); updateGPTSection(); updateMessages(); updateHeader(); updateFilePreviews(); updateGPTBanner();
+  if(S.gptBuilderOpen&&!document.getElementById('gpt-modal')?.classList.contains('hidden')===false) renderGPTModal();
+}
+
+function updateConvList(){ const el=document.getElementById('conv-list'); if(!el) return; renderConvList(); }
+function updateGPTSection(){ const el=document.getElementById('gpt-section'); if(!el) return; renderGPTSection(); }
+function updateMessages(){ renderMessages(); }
+function updateFilePreviews(){ renderFilePreviews(); }
+function updateHeader(){
+  const tb=document.querySelector('.header-title');
+  if(tb) tb.innerHTML=`${iconSvg('MessageSquare',20)} AI Chat ${S.user?.isGuest?'<span class="guest-badge">게스트 모드</span>':''}`;
+  const dd=document.getElementById('user-dropdown');
+  if(dd){ dd.className=`dropdown ${S.dropdownOpen?'open':''}`; }
+}
+function updateGPTBanner(){
+  const b=document.getElementById('gpt-banner'); if(!b) return;
+  if(S.currentGPT){
+    b.className='visible';
+    b.innerHTML=`<div class="gpt-banner-avatar">${S.currentGPT.avatar_url?`<img src="${S.currentGPT.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`:(S.currentGPT.name[0]||'?')}</div><div><div style="font-weight:600;">${escHtml(S.currentGPT.name)}</div>${S.currentGPT.description?`<div style="font-size:13px;color:rgba(255,255,255,0.6);">${escHtml(S.currentGPT.description)}</div>`:''}</div>`;
+  } else {
+    b.className=''; b.innerHTML='';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🌐  ONLINE / OFFLINE
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener('online',()=>{ setState({isOnline:true}); toast('인터넷에 연결되었습니다','success'); });
+window.addEventListener('offline',()=>{ setState({isOnline:false}); toast('오프라인 상태입니다','error'); });
+
+// ═══════════════════════════════════════════════════════════════
+// 🚀  BOOT
+// ═══════════════════════════════════════════════════════════════
+(async()=>{
+  try{
+    await Promise.all([
+      blobStore.ready(), metaStore.ready(), msgFileStore.ready(),
+      convStore.ready(), msgStore.ready()
+    ]);
+  }catch(e){ console.warn('LocalForage init:', e); }
+
+  await initAuth();
+  if(S.user) await loadUserData();
+  render();
+  document.getElementById('loading-screen').classList.add('hidden');
+})();
+
+// PWA Service Worker
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{ navigator.serviceWorker.register('/sw.js').catch(()=>{}); });
+}
 </script>
 </body>
 </html>
