@@ -15,9 +15,10 @@ import {
 
 interface SidebarProps {
   onNewChat: () => void;
+  onClose?: () => void;
 }
 
-export function Sidebar({ onNewChat }: SidebarProps) {
+export function Sidebar({ onNewChat, onClose }: SidebarProps) {
   const { user } = useAuth();
   const { conversations, currentConversationId, setCurrentConversation, deleteConversation: removeConversation, setCurrentGPT } = useChatStore();
 
@@ -47,7 +48,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
   };
 
   return (
-    <div className="w-64 bg-card border-r border-border flex flex-col h-screen">
+    <div className="w-64 bg-card border-r border-border flex flex-col h-screen flex-shrink-0">
       <div className="p-3">
         <Button
           onClick={handleNewChat}

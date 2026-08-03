@@ -1,4 +1,4 @@
-import { LogOut, User, Wrench } from 'lucide-react';
+import { LogOut, User, Wrench, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -13,7 +13,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAutoRepair } from '@/hooks/useAutoRepair';
 import { messageQueue } from '@/lib/offline-queue';
 
-export function Header() {
+interface HeaderProps {
+  onToggleSidebar?: () => void;
+  sidebarOpen?: boolean;
+}
+
+export function Header({ onToggleSidebar, sidebarOpen }: HeaderProps) {
   const { user, logout } = useAuth();
   const { runEmergencyRepair } = useAutoRepair();
 
@@ -33,6 +38,17 @@ export function Header() {
     <header className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex h-14 items-center justify-between px-6">
         <div className="flex items-center gap-2">
+          {onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              title={sidebarOpen ? '사이드바 닫기' : '사이드바 열기'}
+            >
+              {sidebarOpen
+                ? <PanelLeftClose className="w-5 h-5" />
+                : <PanelLeftOpen className="w-5 h-5" />}
+            </button>
+          )}
           <h1 className="text-xl font-semibold">AI Chat</h1>
           {user?.isGuest && (
             <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full">
