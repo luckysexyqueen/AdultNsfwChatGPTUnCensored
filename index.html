@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Custom GPT Chat UI</title>
+  <title>GPT Chat UI - Full Version</title>
   <style>
+    /* ── 기본 스타일 및 변수 설정 ── */
     :root {
-      --bg-color: #121212;
-      --card-bg: #1e1e1e;
-      --text-color: #e0e0e0;
-      --accent-color: #3b82f6;
-      --border-color: #333;
+      --bg-color: #343541;
+      --sidebar-bg: #202123;
+      --card-bg: #444654;
+      --text-color: #ececf1;
+      --accent-color: #10a37f;
+      --border-color: #4d4d4f;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: var(--bg-color);
       color: var(--text-color);
       display: flex;
@@ -22,65 +24,102 @@
       overflow: hidden;
     }
 
-    /* 레이아웃 구조 */
+    /* ── 레이아웃 구조 ── */
     #app { display: flex; width: 100%; height: 100%; }
-    #sidebar { width: 260px; background: #181818; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 12px; }
-    #main-content { flex: 1; display: flex; flex-direction: column; position: relative; }
+    
+    /* 사이드바 */
+    #sidebar { 
+      width: 260px; 
+      background-color: var(--sidebar-bg); 
+      border-right: 1px solid var(--border-color); 
+      display: flex; 
+      flex-direction: column; 
+      padding: 10px; 
+    }
+    .btn { background: #40414f; color: white; border: 1px solid #565869; padding: 10px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .btn:hover { background: #2a2b32; }
+    .btn-primary { background: var(--accent-color); border: none; }
+    .btn-primary:hover { background: #0e906f; }
+    
+    #gpt-file-list { margin-top: 20px; overflow-y: auto; flex: 1; }
+    .file-item { font-size: 13px; color: #c5c5d2; padding: 8px; border-radius: 6px; background: #2a2b32; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; word-break: break-all; }
 
-    /* 헤더 & 우측 드롭다운 */
-    header { height: 50px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+    /* 메인 콘텐츠 영역 */
+    #main-content { flex: 1; display: flex; flex-direction: column; position: relative; }
+    
+    /* 헤더 */
+    header { 
+      height: 60px; 
+      border-bottom: 1px solid var(--border-color); 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      padding: 0 20px; 
+      background: var(--bg-color);
+    }
     .header-right { position: relative; }
-    #user-btn { background: #333; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
-    .dropdown { display: none; position: absolute; right: 0; top: 40px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; width: 150px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 100; }
+    .dropdown { 
+      display: none; position: absolute; right: 0; top: 45px; 
+      background: var(--sidebar-bg); border: 1px solid var(--border-color); 
+      border-radius: 6px; width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 100; 
+    }
     .dropdown.open { display: block; }
-    .dropdown button { width: 100%; text-align: left; padding: 10px; background: none; border: none; color: var(--text-color); cursor: pointer; }
-    .dropdown button:hover { background: #2a2a2a; }
+    .dropdown button { width: 100%; text-align: left; padding: 12px 16px; background: none; border: none; color: var(--text-color); cursor: pointer; border-bottom: 1px solid var(--border-color); }
+    .dropdown button:hover { background: #343541; }
+    .dropdown button:last-child { border-bottom: none; }
 
     /* 채팅 영역 */
-    #chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-    .message { max-width: 70%; padding: 10px 14px; border-radius: 8px; line-height: 1.4; }
-    .message.user { align-self: flex-end; background: var(--accent-color); color: white; }
-    .message.assistant { align-self: flex-start; background: #2a2a2a; }
+    #chat-box { flex: 1; padding: 20px 15%; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+    .message { max-width: 100%; padding: 16px 20px; border-radius: 8px; line-height: 1.6; white-space: pre-wrap; font-size: 15px; }
+    .message.user { align-self: flex-end; background: var(--card-bg); }
+    .message.assistant { align-self: flex-start; background: transparent; border-left: 3px solid var(--accent-color); }
 
-    /* 입력 폼 */
-    #input-container { padding: 12px 20px; border-top: 1px solid var(--border-color); background: var(--bg-color); }
-    .input-box { display: flex; align-items: flex-end; gap: 8px; background: #222; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; }
-    #msg-input { flex: 1; background: none; border: none; color: white; resize: none; outline: none; max-height: 180px; font-size: 14px; line-height: 1.4; }
-    .btn { background: #333; color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
-    .btn-primary { background: var(--accent-color); }
+    /* 하단 입력 영역 */
+    #input-container { padding: 20px 15%; background: linear-gradient(180deg, rgba(53,55,64,0) 0%, rgba(53,55,64,1) 30%); }
+    .input-box { display: flex; align-items: flex-end; gap: 10px; background: #40414f; border: 1px solid #565869; border-radius: 12px; padding: 10px 14px; box-shadow: 0 0 15px rgba(0,0,0,0.1); }
+    #msg-input { flex: 1; background: none; border: none; color: white; resize: none; outline: none; max-height: 200px; font-size: 15px; line-height: 1.5; padding: 4px 0; }
+    
+    /* 첨부 파일 미리보기 */
+    #attached-preview { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+    .attachment-chip { background: #2a2b32; padding: 6px 12px; border-radius: 6px; font-size: 13px; display: flex; align-items: center; border: 1px solid #565869; }
 
-    /* 첨부 파일 리스트 */
-    #attached-preview { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-    .attachment-chip { background: #333; padding: 4px 8px; border-radius: 4px; font-size: 12px; display: flex; align-items: center; gap: 4px; }
-
-    /* 브라우저 오버레이 */
-    #brow { position: absolute; top: 0; right: -100%; width: 50%; height: 100%; background: #1a1a1a; border-left: 1px solid var(--border-color); transition: right 0.3s ease; display: flex; flex-direction: column; z-index: 200; }
+    /* ── 내장 브라우저 오버레이 ── */
+    #brow { position: absolute; top: 0; right: -100%; width: 50%; height: 100%; background: #202123; border-left: 1px solid var(--border-color); transition: right 0.3s ease; display: flex; flex-direction: column; z-index: 200; box-shadow: -5px 0 20px rgba(0,0,0,0.3); }
     #brow.open { right: 0; }
-    .brow-header { height: 40px; background: #252525; display: flex; align-items: center; gap: 8px; padding: 0 8px; }
-    #brow-iframe { flex: 1; border: none; background: white; }
+    .brow-header { height: 50px; background: #343541; display: flex; align-items: center; gap: 10px; padding: 0 15px; border-bottom: 1px solid var(--border-color); }
+    #brow-iframe { flex: 1; border: none; background: white; width: 100%; height: 100%; }
 
-    /* 토스트 알림 */
-    #toast-container { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 1000; }
-    .toast { padding: 10px 16px; border-radius: 6px; background: #333; color: white; font-size: 13px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
-    .toast.success { background: #2e7d32; }
-    .toast.error { background: #c62828; }
+    /* ── 토스트 알림 ── */
+    #toast-container { position: fixed; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 1000; }
+    .toast { padding: 12px 20px; border-radius: 8px; font-size: 14px; font-weight: 500; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.4); animation: fadeIn 0.3s ease; }
+    .toast.success { background: #10a37f; }
+    .toast.error { background: #ef4444; }
+    .toast.info { background: #3b82f6; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
 
   <div id="app">
-    <!-- 사이드바 -->
+    <!-- ── 사이드바 ── -->
     <div id="sidebar">
-      <button id="btn-new-chat" class="btn" style="width: 100%;">+ 새 채팅</button>
-      <div id="gpt-file-list" style="margin-top: 16px;"></div>
+      <button id="btn-new-chat" class="btn" style="width: 100%; text-align: left;">+ 새 채팅</button>
+      
+      <hr style="border-color: var(--border-color); margin: 20px 0;">
+      
+      <!-- GPT 학습/참조용 파일 업로드 섹션 -->
+      <button id="btn-gpt-file-upload" class="btn btn-primary" style="width: 100%;">문서 데이터 업로드</button>
+      <input type="file" id="gpt-file-input" multiple style="display: none;" />
+      
+      <div id="gpt-file-list"></div>
     </div>
 
-    <!-- 메인 메세지 영역 -->
+    <!-- ── 메인 콘텐츠 ── -->
     <div id="main-content">
       <header>
-        <div><strong>GPT Chat App</strong></div>
+        <div style="font-size: 16px; font-weight: 600;">Full Version GPT UI</div>
         <div class="header-right">
-          <button id="user-btn">프로필 ▼</button>
+          <button id="user-btn" class="btn">내 계정 ▼</button>
           <div class="dropdown" id="dropdown-menu">
             <button id="dd-queue">내장 브라우저 열기</button>
             <button id="dd-logout">로그아웃</button>
@@ -88,26 +127,28 @@
         </div>
       </header>
 
-      <div id="chat-box"></div>
+      <div id="chat-box">
+        <div class="message assistant">안녕하세요! 무엇을 도와드릴까요?</div>
+      </div>
 
       <div id="input-container">
         <div id="attached-preview"></div>
         <div class="input-box">
-          <button id="btn-attach" class="btn">📎</button>
+          <button id="btn-attach" class="btn" style="background: transparent; border: none; font-size: 18px; padding: 4px 8px;">📎</button>
           <input type="file" id="file-input" multiple style="display: none;" />
-          <textarea id="msg-input" rows="1" placeholder="메시지를 입력하세요..."></textarea>
+          <textarea id="msg-input" rows="1" placeholder="메시지 GPT... (Shift + Enter로 줄바꿈)"></textarea>
           <button id="btn-send" class="btn btn-primary">전송</button>
         </div>
       </div>
 
-      <!-- 브라우저 오버레이 -->
+      <!-- ── 브라우저 오버레이 ── -->
       <div id="brow">
         <div class="brow-header">
           <button id="brow-back" class="btn">닫기</button>
-          <button id="brow-reload" class="btn">🔄</button>
-          <button id="brow-newtab" class="btn">↗ 새창</button>
+          <button id="brow-reload" class="btn">새로고침</button>
+          <button id="brow-newtab" class="btn">새창으로 열기</button>
         </div>
-        <iframe id="brow-iframe" src="about:blank"></iframe>
+        <iframe id="brow-iframe" src="https://ko.wikipedia.org/"></iframe>
       </div>
     </div>
   </div>
@@ -115,7 +156,7 @@
   <div id="toast-container"></div>
 
 <script>
-// ── 전역 상태 관리 ─────────────────────────────────────────────
+// ── 1. 전역 상태 및 데이터 ─────────────────────────────────────
 let S = {
   currentConvId: null,
   messages: [],
@@ -125,127 +166,128 @@ let S = {
   isOnline: navigator.onLine
 };
 
-let gptModalFiles = [];
+let gptModalFiles = []; // 문서 파일 저장 배열
 
-// 상태 변경 함수
 function setState(newState) {
   S = { ...S, ...newState };
   renderUI();
 }
 
-// UI 렌더링 동기화
 function renderUI() {
-  // 드롭다운 처리
   const dropdown = document.getElementById('dropdown-menu');
-  if (dropdown) {
-    if (S.dropdownOpen) dropdown.classList.add('open');
-    else dropdown.classList.remove('open');
-  }
+  if (dropdown) dropdown.className = S.dropdownOpen ? 'dropdown open' : 'dropdown';
 
-  // 첨부파일 프리뷰 렌더링
-  const previewContainer = document.getElementById('attached-preview');
-  if (previewContainer) {
-    previewContainer.innerHTML = S.attachedFiles.map(item => `
-      <div class="attachment-chip">
-        📄 ${escHtml(item.file.name)}
-      </div>
+  const preview = document.getElementById('attached-preview');
+  if (preview) {
+    preview.innerHTML = S.attachedFiles.map(item => `
+      <div class="attachment-chip">📎 ${escHtml(item.file.name)}</div>
     `).join('');
   }
 
-  // 채팅 메시지 렌더링
   const chatBox = document.getElementById('chat-box');
   if (chatBox) {
     chatBox.innerHTML = S.messages.map(m => `
-      <div class="message ${m.role}">
-        ${escHtml(m.text)}
-      </div>
+      <div class="message ${m.role}">${escHtml(m.text)}</div>
     `).join('');
     chatBox.scrollTop = chatBox.scrollHeight;
   }
 }
 
-// ── 유틸리티 및 헬퍼 함수 ────────────────────────────────────
+// ── 2. 유틸리티 함수 ───────────────────────────────────────────
 function toast(msg, type = 'info') {
   const container = document.getElementById('toast-container');
   const div = document.createElement('div');
   div.className = `toast ${type}`;
   div.innerText = msg;
   container.appendChild(div);
-  setTimeout(() => div.remove(), 3000);
+  setTimeout(() => div.remove(), 3500);
 }
 
 function fileType(f) {
-  if (f.type.startsWith('image/')) return 'image';
-  return 'file';
+  return f.type.startsWith('image/') ? 'image' : 'file';
+}
+
+function doLogout() {
+  toast('안전하게 로그아웃 되었습니다.', 'success');
+  setState({ dropdownOpen: false });
+}
+
+function initAuth() {
+  console.log('초기화 완료');
+  bindMain(); // 제공해주신 bindMain 함수 호출
+}
+
+function sendMessage(txt, files) {
+  const userMsg = { role: 'user', text: txt };
+  setState({ messages: [...S.messages, userMsg], attachedFiles: [] });
+
+  // AI 응답 시뮬레이션
+  setTimeout(() => {
+    setState({ 
+      messages: [...S.messages, { role: 'assistant', text: `입력하신 내용 "${txt}"에 대한 처리 결과입니다.\n\n첨부된 파일 개수: ${files.length}개` }] 
+    });
+  }, 1000);
 }
 
 function renderGPTFileList() {
   const list = document.getElementById('gpt-file-list');
   if (!list) return;
   list.innerHTML = gptModalFiles.map(f => `
-    <div style="font-size: 12px; color: #888; margin-top: 4px;">
-      📎 ${escHtml(f.file_name)}
+    <div class="file-item">
+      📄 ${escHtml(f.file_name)} <span style="color:#888; font-size:11px;">(${(f.file_size/1024).toFixed(1)}KB)</span>
     </div>
   `).join('');
 }
 
-function doLogout() {
-  toast('로그아웃 되었습니다.', 'info');
-}
 
-function initAuth() {
-  console.log('인증 및 초기화 완료');
-  bindMain();
-}
+// ── 3. (질문자님 원본 코드 복원) GPT 문서 업로드 로직 ───────────
+// sd, data 등 원본 코드의 변수 에러가 나지 않도록 가상 데이터를 상단에 묶었습니다.
+const gptFileInput = document.getElementById('gpt-file-input');
+const gptUploadBtn = document.getElementById('btn-gpt-file-upload');
 
-function sendMessage(txt, files) {
-  const userMsg = { role: 'user', text: txt };
-  const newMessages = [...S.messages, userMsg];
+gptUploadBtn?.addEventListener('click', () => gptFileInput.click());
+
+gptFileInput?.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
   
-  // 상태 갱신 (메시지 추가 및 첨부파일 초기화)
-  setState({ messages: newMessages, attachedFiles: [] });
-
-  // AI 응답 흉내 (Mocking)
-  setTimeout(() => {
-    const aiMsg = { role: 'assistant', text: `응답: "${txt}" 메시지를 정상 수신했습니다.` };
-    setState({ messages: [...S.messages, aiMsg] });
-  }, 600);
-}
-
-// ── GPT 파일 업로드 처리 함수 (요청 코드 상단 복원) ──────────────
-async function uploadGPTFiles(files) {
   const btn = document.getElementById('btn-gpt-file-upload');
-  if (btn) btn.disabled = true;
+  if(btn) btn.disabled = true;
 
   for (const file of files) {
     try {
+      // API 통신을 대체하는 가상 데이터 생성 (sd, data)
+      const data = { path: `bucket-path/${Date.now()}_${file.name}` };
+      const sd = { signedUrl: `https://storage.cloud.com/${data.path}?token=abc` };
+      
       let fc = '';
       try {
-        if (file.type.startsWith('text/') || file.type.includes('json')) {
+        // 텍스트 계열 파일 내용 읽기
+        if(file.type.startsWith('text/') || file.type.includes('json') || file.type.includes('csv')) {
           fc = await file.text();
         }
-      } catch(err) { fc = ''; }
-
-      // 사용자 제공 코드 부분
-      gptModalFiles.push({
-        file_name: file.name,
-        file_url: '',
-        file_path: 'mock/path/' + file.name,
-        file_size: file.size,
-        mime_type: file.type || 'application/octet-stream',
-        file_content: fc && fc.length > 50000 ? fc.slice(0, 50000) + '\n...(생략)' : fc
-      });
-      toast(`${file.name} 첨부 완료`, 'success');
-    } catch(err) { 
-      toast(`${file.name} 처리 중 오류: ${err.message}`, 'error'); 
+      // ↓↓↓ 여기서부터 질문자님 제공 코드 원본 100% 동일 ↓↓↓
+      }catch(err){ fc=''; }
+        gptModalFiles.push({
+          file_name: file.name,
+          file_url: sd?.signedUrl||'',
+          file_path: data.path,
+          file_size: file.size,
+          mime_type: file.type||'application/octet-stream',
+          file_content: fc&&fc.length>50000?fc.slice(0,50000)+'\n...(생략)':fc
+        });
+        toast(`${file.name} 첨부 완료`,'success');
+      }catch(err){ toast(`${file.name} 처리 중 오류: ${err.message}`,'error'); }
     }
-  }
+    if(btn) btn.disabled=false;
+    renderGPTFileList();
+  // ↑↑↑ 질문자님 제공 코드 끝 ↑↑↑
+  
+  gptFileInput.value = ''; // 초기화
+});
 
-  if (btn) btn.disabled = false;
-  renderGPTFileList();
-}
 
-// ── BIND MAIN EVENTS ─────────────────────────────────────────
+// ── 4. (질문자님 원본 코드) BIND MAIN EVENTS ──────────────────
 function bindMain(){
   document.getElementById('btn-new-chat')?.addEventListener('click',()=>{
     setState({currentConvId:null, messages:[], currentGPT:null, attachedFiles:[]});
