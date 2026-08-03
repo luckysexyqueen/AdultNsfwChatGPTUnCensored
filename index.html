@@ -31,6 +31,33 @@
       --danger: #ef4444;
     }
 
+    /* ── 브라우저 패널 ── */
+#brow { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; background: #0a0b0f; transform: translateY(100%); transition: transform .32s cubic-bezier(.4,0,.2,1); }
+#brow.open { transform: translateY(0); }
+#brow-tb { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #0e0f14; border-bottom: 1px solid #1e1f2e; }
+#brow-url { flex: 1; background: #16171f; border: 1px solid #2d2f3e; border-radius: 7px; padding: 5px 10px; font-size: 11px; color: #9ca3af; font-family: 'JetBrains Mono', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#brow-iframe { flex: 1; width: 100%; border: none; }
+
+<!-- ── 브라우저 오버레이 ── -->
+<div id="brow">
+  <div id="brow-tb">
+    <button id="brow-back" class="btn-p px-3 py-1.5 text-xs" style="border-radius:7px;min-height:34px;">
+      <i class="fa-solid fa-arrow-left"></i> 돌아가기
+    </button>
+    <div id="brow-url">
+      <i class="fa-solid fa-lock text-green-400 mr-1 text-xs"></i>GoldFireDragonBrowser
+    </div>
+    <button id="brow-reload" class="btn-g w-8 h-8 text-xs" title="새로고침">
+      <i class="fa-solid fa-rotate-right"></i>
+    </button>
+    <button id="brow-newtab" class="btn-g w-8 h-8 text-xs" title="새 탭에서 열기">
+      <i class="fa-solid fa-arrow-up-right-from-square"></i>
+    </button>
+  </div>
+  <iframe id="brow-iframe" src="https://luckysexyqueen.github.io/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260802/" title="브라우저" allowfullscreen="" style="flex:1;width:100%;border:none;">
+  </iframe>
+</div>
+
     /* ===== SCROLLBAR ===== */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
