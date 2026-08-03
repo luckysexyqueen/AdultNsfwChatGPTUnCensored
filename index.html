@@ -45,8 +45,11 @@
       #app {
         flex: 1;
         min-height: 0;
+        min-width: 0;
         display: flex;
         flex-direction: column;
+        position: relative;
+        overflow: hidden;
       }
 
       /* ===== VARIABLES ===== */
@@ -187,13 +190,13 @@
       /* ===== LAYOUT ===== */
       #main-layout {
         display: flex;
-        height: 100vh;
+        height: 100%;
         overflow: hidden;
       }
 
       /* ===== SIDEBAR ===== */
       #sidebar {
-        position: fixed;
+        position: absolute;
         top: 0;
         left: 0;
         bottom: 0;
@@ -203,7 +206,6 @@
         border-right: 1px solid var(--border);
         display: flex;
         flex-direction: column;
-        height: 100vh;
         overflow: hidden;
         z-index: 300;
         transform: translateX(-100%);
@@ -214,7 +216,7 @@
         transform: translateX(0);
       }
       #sidebar-backdrop {
-        position: fixed;
+        position: absolute;
         inset: 0;
         background: rgba(0, 0, 0, 0.5);
         z-index: 290;
@@ -3169,6 +3171,10 @@
         if (sidebar) sidebar.className = S.sidebarOpen ? "open" : "";
         const backdrop = document.getElementById("sidebar-backdrop");
         if (backdrop) backdrop.className = S.sidebarOpen ? "open" : "";
+        // 안전장치: 일부 안드로이드 웹뷰는 z-index와 무관하게 iframe이 터치를 가로채는 버그가 있어
+        // 사이드바가 열려 있는 동안은 브라우저 iframe의 터치 자체를 막아 먹통 현상을 방지한다.
+        const iframe = document.getElementById("brow-iframe");
+        if (iframe) iframe.style.pointerEvents = S.sidebarOpen ? "none" : "";
       }
       function updateGPTBanner() {
         const b = document.getElementById("gpt-banner");
