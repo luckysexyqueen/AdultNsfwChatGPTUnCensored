@@ -39,9 +39,12 @@
         background: #212121;
         color: #fff;
         overflow: hidden;
+        display: flex;
+        flex-direction: column;
       }
       #app {
-        height: 100vh;
+        flex: 1;
+        min-height: 0;
         display: flex;
         flex-direction: column;
       }
@@ -61,19 +64,41 @@
         --danger: #ef4444;
       }
 
-      /* ── 브라우저 패널 ── */
+      /* ── 브라우저 패널 (채팅 화면과 항상 함께 보이는 분할 패널) ── */
       #brow {
-        position: fixed;
-        inset: 0;
-        z-index: 200;
+        flex-shrink: 0;
+        width: 100%;
+        height: 0;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         background: #0a0b0f;
-        transform: translateY(100%);
-        transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+        transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
       }
       #brow.open {
-        transform: translateY(0);
+        height: 42vh;
+        border-bottom: 1px solid #1e1f2e;
+      }
+      #brow.resizing {
+        transition: none;
+      }
+      #brow-resize {
+        flex-shrink: 0;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: row-resize;
+        background: #0e0f14;
+        touch-action: none;
+      }
+      #brow-resize::after {
+        content: "";
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: #3a3c4a;
       }
       #brow-tb {
         display: flex;
@@ -343,6 +368,30 @@
       }
       .header-right {
         position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .browser-toggle-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: #fff;
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .browser-toggle-btn:hover {
+        background: var(--bg4);
+      }
+      .browser-toggle-btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
       }
       .user-btn {
         width: 36px;
@@ -1153,13 +1202,12 @@
   <body>
     <div id="loading-screen"><div class="spinner"></div></div>
     <div id="toast-container"></div>
-    <div id="app"></div>
 
-    <!-- ── 브라우저 오버레이 ── -->
+    <!-- ── 브라우저 패널 (항상 채팅 화면과 함께 표시) ── -->
     <div id="brow">
       <div id="brow-tb">
         <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
-          <i class="fa-solid fa-arrow-left"></i>&nbsp;돌아가기
+          <i class="fa-solid fa-xmark"></i>&nbsp;닫기
         </button>
         <div id="brow-url">
           <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
@@ -1172,7 +1220,10 @@
         </button>
       </div>
       <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
+      <div id="brow-resize" title="드래그하여 크기 조절"></div>
     </div>
+
+    <div id="app"></div>
 
     <script>
       // ═══════════════════════════════════════════════════════════════
@@ -1584,6 +1635,8 @@
         attachedFiles: [],
         // dropdown open
         dropdownOpen: false,
+        // browser panel open (split view with chat)
+        browserOpen: false,
       };
 
       let renderScheduled = false;
@@ -2368,9 +2421,6 @@
         <button class="btn-new-chat" id="btn-new-chat">
           ${iconSvg("Plus", 16)} 새 채팅
         </button>
-        <button class="btn-new-chat" id="btn-open-browser">
-          🌐 브라우저 열기
-        </button>
       </div>
       <div id="gpt-section" class="gpt-section"></div>
       <div class="sidebar-section" id="conv-list">
@@ -2384,6 +2434,9 @@
           AI Chat
         </div>
         <div class="header-right">
+          <button class="browser-toggle-btn ${S.browserOpen ? "active" : ""}" id="btn-open-browser" title="브라우저 열기/닫기">
+            🌐
+          </button>
           <button class="user-btn" id="user-btn" title="${S.user?.username || ""}">
             ${S.user?.avatar ? `<img src="${S.user.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : (S.user?.username || "?").charAt(0).toUpperCase()}
           </button>
@@ -2859,9 +2912,10 @@
           setState({ currentConvId: null, messages: [], streamingMsg: "", currentGPT: null, currentGPTFiles: [] });
         });
 
-        // Browser overlay open
+        // Browser panel toggle (split view alongside chat)
         document.getElementById("btn-open-browser")?.addEventListener("click", () => {
-          openBrowserOverlay();
+          if (S.browserOpen) closeBrowserOverlay();
+          else openBrowserOverlay();
         });
 
         // User dropdown
@@ -3000,6 +3054,10 @@
         if (dd) {
           dd.className = `dropdown ${S.dropdownOpen ? "open" : ""}`;
         }
+        const bb = document.getElementById("btn-open-browser");
+        if (bb) {
+          bb.className = `browser-toggle-btn ${S.browserOpen ? "active" : ""}`;
+        }
       }
       function updateGPTBanner() {
         const b = document.getElementById("gpt-banner");
@@ -3039,9 +3097,14 @@
           iframe.src = BROWSER_HOME_URL;
         }
         brow.classList.add("open");
+        setState({ browserOpen: true });
       }
       function closeBrowserOverlay() {
-        document.getElementById("brow")?.classList.remove("open");
+        const brow = document.getElementById("brow");
+        brow?.classList.remove("open");
+        // reset any manually-dragged height so next open uses the default split
+        if (brow) brow.style.height = "";
+        setState({ browserOpen: false });
       }
       function bindBrowserOverlay() {
         document.getElementById("brow-back")?.addEventListener("click", closeBrowserOverlay);
@@ -3054,6 +3117,39 @@
         document.getElementById("brow-newtab")?.addEventListener("click", () => {
           window.open(BROWSER_HOME_URL, "_blank", "noopener,noreferrer");
         });
+        bindBrowserResize();
+      }
+
+      // 드래그로 브라우저 패널 / 채팅 화면 분할 비율 조절
+      function bindBrowserResize() {
+        const handle = document.getElementById("brow-resize");
+        const brow = document.getElementById("brow");
+        if (!handle || !brow) return;
+        let dragging = false;
+        const applyHeight = (clientY) => {
+          const vh = window.innerHeight;
+          const min = vh * 0.18;
+          const max = vh * 0.8;
+          const h = Math.max(min, Math.min(max, clientY));
+          brow.style.height = h + "px";
+        };
+        handle.addEventListener("pointerdown", (e) => {
+          if (!brow.classList.contains("open")) return;
+          dragging = true;
+          brow.classList.add("resizing");
+          handle.setPointerCapture(e.pointerId);
+        });
+        handle.addEventListener("pointermove", (e) => {
+          if (!dragging) return;
+          applyHeight(e.clientY);
+        });
+        const endDrag = () => {
+          if (!dragging) return;
+          dragging = false;
+          brow.classList.remove("resizing");
+        };
+        handle.addEventListener("pointerup", endDrag);
+        handle.addEventListener("pointercancel", endDrag);
       }
 
       // ═══════════════════════════════════════════════════════════════
