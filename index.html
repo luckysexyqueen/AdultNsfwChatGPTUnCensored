@@ -2181,6 +2181,37 @@
       // 🤖  GPT BUILDER
       // ═══════════════════════════════════════════════════════════════
       let gptBuilderFiles = []; // tmp before save
+      let gptModalPendingDeletes = []; // 기존 DB 파일 중 삭제 예정 목록
+
+      // 커스텀 GPT의 기존 파일을 DB에서 로드
+      async function loadGPTFiles(gptId) {
+        try {
+          const { data, error } = await sb
+            .from("custom_gpt_files")
+            .select("*")
+            .eq("custom_gpt_id", gptId)
+            .order("created_at", { ascending: true });
+          if (error) throw error;
+          return (data || []).map(f => ({ ...f, isExisting: true }));
+        } catch (e) {
+          console.error("GPT 파일 로드 실패:", e);
+          return [];
+        }
+      }
+
+      // 개별 파일 DB + Storage 동시 삭제
+      async function deleteGPTFileFromDB(file) {
+        try {
+          if (file.file_path) {
+            await sb.storage.from("chat-files").remove([file.file_path]);
+          }
+          if (file.id && file.isExisting) {
+            await sb.from("custom_gpt_files").delete().eq("id", file.id);
+          }
+        } catch (e) {
+          console.error("파일 삭제 실패:", e);
+        }
+      }
 
       async function saveGPT(formData) {
         const uid = S.user?.id;
@@ -2206,9 +2237,14 @@
               .select()
               .single();
             if (error) throw error;
-            // Save new files
+            // 삭제 예정 파일 처리 (DB + Storage)
+            for (const f of gptModalPendingDeletes) {
+              await deleteGPTFileFromDB(f);
+            }
+            gptModalPendingDeletes = [];
+            // 새로 추가된 파일만 저장
             for (const f of gptBuilderFiles) {
-              if (!f.custom_gpt_id) {
+              if (!f.isExisting) {
                 await sb
                   .from("custom_gpt_files")
                   .insert({
@@ -2816,7 +2852,7 @@
       // ── GPT MODAL ────────────────────────────────────────────────
       let gptModalFiles = []; // runtime pending files for modal display
 
-      function renderGPTModal() {
+      async function renderGPTModal() {
         const overlay = document.getElementById("gpt-modal");
         if (!overlay) return;
         const editing = S.gptBuilderEditing;
@@ -2866,7 +2902,15 @@
     </div>
   </div>`;
 
-        gptModalFiles = editing ? [...gptBuilderFiles] : [...gptBuilderFiles];
+        gptModalPendingDeletes = [];
+        // 편집 시: DB에서 기존 파일 로드
+        if (editing) {
+          const existingFiles = await loadGPTFiles(editing.id);
+          const newOnly = gptBuilderFiles.filter(f => !f.isExisting);
+          gptModalFiles = [...existingFiles, ...newOnly];
+        } else {
+          gptModalFiles = [...gptBuilderFiles];
+        }
         renderGPTFileList();
 
         document.getElementById("modal-close").addEventListener("click", () => {
@@ -2910,16 +2954,47 @@
         const el = document.getElementById("gf-file-list");
         if (!el) return;
         el.innerHTML = "";
+        if (gptModalFiles.length === 0) {
+          el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
+          return;
+        }
         for (let i = 0; i < gptModalFiles.length; i++) {
           const f = gptModalFiles[i];
+          const isPending = f.isExisting && gptModalPendingDeletes.some(dd => dd.id === f.id);
           const d = document.createElement("div");
           d.className = "file-list-item";
-          d.innerHTML = `${iconSvg("FileText", 16)}<div class="file-list-name">${escHtml(f.file_name)}</div><span class="file-list-size">${fmtSize(f.file_size)}</span><button class="file-list-del" data-idx="${i}" title="삭제">${iconSvg("Trash2", 14)}</button>`;
+          d.style.opacity = isPending ? "0.45" : "1";
+          d.style.textDecoration = isPending ? "line-through" : "none";
+          const statusBadge = f.isExisting
+            ? `<span style="font-size:10px;background:rgba(16,163,127,0.18);color:#10a37f;padding:2px 7px;border-radius:9999px;flex-shrink:0;">저장됨</span>`
+            : `<span style="font-size:10px;background:rgba(59,130,246,0.18);color:#60a5fa;padding:2px 7px;border-radius:9999px;flex-shrink:0;">새파일</span>`;
+          const delLabel = isPending ? "되돌리기" : "삭제";
+          const delColor = isPending ? "var(--text-muted)" : "var(--danger)";
+          const delIcon = isPending ? iconSvg("Plus", 14) : iconSvg("Trash2", 14);
+          d.innerHTML = `${iconSvg("FileText", 16)}<div class="file-list-name">${escHtml(f.file_name)}</div>${statusBadge}<span class="file-list-size">${fmtSize(f.file_size)}</span><button class="file-list-del" data-idx="${i}" title="${delLabel}" style="color:${delColor}">${delIcon}</button>`;
           d.querySelector("[data-idx]").addEventListener("click", () => {
-            gptModalFiles.splice(i, 1);
+            const target = gptModalFiles[i];
+            if (target && target.isExisting) {
+              // 기존 DB 파일: 삭제 예정 토글
+              const pIdx = gptModalPendingDeletes.findIndex(x => x.id === target.id);
+              if (pIdx >= 0) {
+                gptModalPendingDeletes.splice(pIdx, 1);
+              } else {
+                gptModalPendingDeletes.push(target);
+              }
+            } else if (target) {
+              // 새 파일: 즉시 목록에서 제거
+              gptModalFiles.splice(i, 1);
+            }
             renderGPTFileList();
           });
           el.appendChild(d);
+        }
+        if (gptModalPendingDeletes.length > 0) {
+          const notice = document.createElement("div");
+          notice.style.cssText = "font-size:11px;color:var(--danger);padding:6px 4px;margin-top:4px;";
+          notice.textContent = `⚠️ ${gptModalPendingDeletes.length}개 파일이 '저장' 시 영구 삭제됩니다`;
+          el.appendChild(notice);
         }
       }
 
