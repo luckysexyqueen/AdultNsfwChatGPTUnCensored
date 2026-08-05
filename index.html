@@ -13,10 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
          파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-    <script
-      src="/env-config.js"
-      onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
-    ></script>
+    <script src="/env-config.js" onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"></script>
     <!-- LocalForage -->
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
@@ -83,10 +80,7 @@
         background: #0a0b0f;
         overflow: hidden;
         /* Firefox 호환성: height: 0일 때 iframe 렌더링이 멈추는 문제를 방지하기 위해 visibility와 opacity를 함께 사용합니다. */
-        transition:
-          height 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-          visibility 0.28s,
-          opacity 0.28s;
+        transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.28s, opacity 0.28s;
         visibility: hidden;
         opacity: 0;
         pointer-events: none;
@@ -139,10 +133,7 @@
           flex-direction: row; /* 내용 왼쪽, 핸들 오른쪽 */
           width: 0;
           height: 100%;
-          transition:
-            width 0.28s cubic-bezier(0.4, 0, 0.2, 1),
-            visibility 0.28s,
-            opacity 0.28s;
+          transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.28s, opacity 0.28s;
           visibility: hidden;
           opacity: 0;
         }
@@ -192,7 +183,7 @@
       }
 
       /* ===== SCROLLBAR ===== */
-      ::-webkit-scrollbar {
+    ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
       }
@@ -261,9 +252,7 @@
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
+        transition: background 0.15s, border-color 0.15s;
       }
       .sidebar-toggle-btn:hover {
         background: var(--bg4);
@@ -495,9 +484,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
+        transition: background 0.15s, border-color 0.15s;
       }
       .browser-toggle-btn:hover {
         background: var(--bg4);
@@ -1305,42 +1292,30 @@
     <div id="brow">
       <div id="brow-content">
         <div id="brow-tb">
-          <button id="brow-back" class="input-box-btn" style="border-radius: 7px; min-height: 34px; color: #fff">
-            <i class="fa-solid fa-xmark"></i>
-            &nbsp;닫기
+          <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
+            <i class="fa-solid fa-xmark"></i>&nbsp;닫기
           </button>
           <div id="brow-url">
-            <i class="fa-solid fa-lock" style="color: #4ade80; margin-right: 4px"></i>
-            GoldFireDragonBrowser
+            <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
           </div>
-          <button
-            id="brow-reload"
-            class="input-box-btn"
-            style="width: 32px; height: 32px; color: #fff"
-            title="새로고침"
-          >
+          <button id="brow-reload" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새로고침">
             <i class="fa-solid fa-rotate-right"></i>
           </button>
-          <button
-            id="brow-newtab"
-            class="input-box-btn"
-            style="width: 32px; height: 32px; color: #fff"
-            title="새 탭에서 열기"
-          >
+          <button id="brow-newtab" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새 탭에서 열기">
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
           </button>
         </div>
         <!-- Firefox 및 현대적 브라우저를 위한 최적화된 object 구현 -->
         <object
-          id="brow-object"
-          src="about:blank"
-          title="브라우저"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowfullscreen=""
+          id="brow-object" 
+          src="about:blank" 
+          title="브라우저" 
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
+          allowfullscreen 
           loading="lazy"
           referrerpolicy="no-referrer-when-downgrade"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-          style="flex: 1; width: 100%; border: none; background: #fff"
+          style="flex:1;width:100%;border:none;background:#fff;"
         ></object>
       </div>
       <div id="brow-resize" title="드래그하여 크기 조절"></div>
@@ -1876,7 +1851,11 @@
         if (!uid) return;
         try {
           const { data, error } = await withTimeout(
-            sb.from("conversations").select("*").eq("user_id", uid).order("updated_at", { ascending: false }),
+            sb
+              .from("conversations")
+              .select("*")
+              .eq("user_id", uid)
+              .order("updated_at", { ascending: false }),
             8000,
             { data: null, error: new Error("timeout") },
           );
@@ -2235,7 +2214,7 @@
             .eq("custom_gpt_id", gptId)
             .order("created_at", { ascending: true });
           if (error) throw error;
-          return (data || []).map((f) => ({ ...f, isExisting: true }));
+          return (data || []).map(f => ({ ...f, isExisting: true }));
         } catch (e) {
           console.error("GPT 파일 로드 실패:", e);
           return [];
@@ -2949,7 +2928,7 @@
         // 편집 시: DB에서 기존 파일 로드
         if (editing) {
           const existingFiles = await loadGPTFiles(editing.id);
-          const newOnly = gptBuilderFiles.filter((f) => !f.isExisting);
+          const newOnly = gptBuilderFiles.filter(f => !f.isExisting);
           gptModalFiles = [...existingFiles, ...newOnly];
         } else {
           gptModalFiles = [...gptBuilderFiles];
@@ -2998,13 +2977,12 @@
         if (!el) return;
         el.innerHTML = "";
         if (gptModalFiles.length === 0) {
-          el.innerHTML =
-            '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
+          el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
           return;
         }
         for (let i = 0; i < gptModalFiles.length; i++) {
           const f = gptModalFiles[i];
-          const isPending = f.isExisting && gptModalPendingDeletes.some((dd) => dd.id === f.id);
+          const isPending = f.isExisting && gptModalPendingDeletes.some(dd => dd.id === f.id);
           const d = document.createElement("div");
           d.className = "file-list-item";
           d.style.opacity = isPending ? "0.45" : "1";
@@ -3020,7 +2998,7 @@
             const target = gptModalFiles[i];
             if (target && target.isExisting) {
               // 기존 DB 파일: 삭제 예정 토글
-              const pIdx = gptModalPendingDeletes.findIndex((x) => x.id === target.id);
+              const pIdx = gptModalPendingDeletes.findIndex(x => x.id === target.id);
               if (pIdx >= 0) {
                 gptModalPendingDeletes.splice(pIdx, 1);
               } else {
@@ -3312,18 +3290,18 @@
 
       function openBrowserOverlay() {
         const brow = document.getElementById("brow");
-        const object = document.getElementById("brow-object");
-        if (!brow || !object) return;
+        const iframe = document.getElementById("brow-iframe");
+        if (!brow || !iframe) return;
 
         // Firefox 호환성: 패널이 열리기 시작한 후 약간의 지연을 두어 iframe 소스를 설정하거나 새로고침합니다.
         // 이는 요소가 숨겨져 있을 때 Firefox가 렌더링을 건너뛰는 문제를 방지합니다.
         brow.classList.add("open");
         setState({ browserOpen: true });
 
-        if (!object.src || object.src === "about:blank") {
+        if (!iframe.src || iframe.src === "about:blank") {
           // transition이 시작된 후 로드되도록 지연 처리
           setTimeout(() => {
-            object.src = BROWSER_HOME_URL;
+            iframe.src = BROWSER_HOME_URL;
           }, 50);
         }
       }
@@ -3341,9 +3319,9 @@
       function bindBrowserOverlay() {
         document.getElementById("brow-back")?.addEventListener("click", closeBrowserOverlay);
         document.getElementById("brow-reload")?.addEventListener("click", () => {
-          const object = document.getElementById("brow-object");
-          if (object && object.src && object.src !== "about:blank") {
-            object.src = object.src;
+          const iframe = document.getElementById("brow-iframe");
+          if (iframe && iframe.src && iframe.src !== "about:blank") {
+            iframe.src = iframe.src;
           }
         });
         document.getElementById("brow-newtab")?.addEventListener("click", () => {
