@@ -79,17 +79,10 @@
         min-height: 0;
         background: #0a0b0f;
         overflow: hidden;
-        /* Firefox 호환성: height: 0일 때 iframe 렌더링이 멈추는 문제를 방지하기 위해 visibility와 opacity를 함께 사용합니다. */
-        transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.28s, opacity 0.28s;
-        visibility: hidden;
-        opacity: 0;
-        pointer-events: none;
+        transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
       }
       #brow.open {
         height: 50vh;
-        visibility: visible;
-        opacity: 1;
-        pointer-events: auto;
         border-bottom: 1px solid #1e1f2e;
       }
       #brow.resizing {
@@ -133,15 +126,11 @@
           flex-direction: row; /* 내용 왼쪽, 핸들 오른쪽 */
           width: 0;
           height: 100%;
-          transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.28s, opacity 0.28s;
-          visibility: hidden;
-          opacity: 0;
+          transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
         }
         #brow.open {
           width: 50vw;
           height: 100%;
-          visibility: visible;
-          opacity: 1;
           border-bottom: none;
           border-right: 1px solid #1e1f2e;
         }
@@ -1305,18 +1294,7 @@
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
           </button>
         </div>
-        <!-- Firefox 및 현대적 브라우저를 위한 최적화된 iframe 구현 -->
-        <iframe 
-          id="brow-iframe" 
-          src="about:blank" 
-          title="브라우저" 
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
-          allowfullscreen 
-          loading="lazy"
-          referrerpolicy="no-referrer-when-downgrade"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-          style="flex:1;width:100%;border:none;background:#fff;"
-        ></iframe>
+        <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
       </div>
       <div id="brow-resize" title="드래그하여 크기 조절"></div>
     </div>
@@ -3292,18 +3270,11 @@
         const brow = document.getElementById("brow");
         const iframe = document.getElementById("brow-iframe");
         if (!brow || !iframe) return;
-
-        // Firefox 호환성: 패널이 열리기 시작한 후 약간의 지연을 두어 iframe 소스를 설정하거나 새로고침합니다.
-        // 이는 요소가 숨겨져 있을 때 Firefox가 렌더링을 건너뛰는 문제를 방지합니다.
+        if (!iframe.src || iframe.src === "about:blank") {
+          iframe.src = BROWSER_HOME_URL;
+        }
         brow.classList.add("open");
         setState({ browserOpen: true });
-
-        if (!iframe.src || iframe.src === "about:blank") {
-          // transition이 시작된 후 로드되도록 지연 처리
-          setTimeout(() => {
-            iframe.src = BROWSER_HOME_URL;
-          }, 50);
-        }
       }
       function closeBrowserOverlay() {
         const brow = document.getElementById("brow");
