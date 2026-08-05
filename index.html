@@ -1305,9 +1305,9 @@
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
           </button>
         </div>
-        <!-- Firefox 및 현대적 브라우저를 위한 최적화된 object 구현 -->
-        <object
-          id="brow-object" 
+        <!-- Firefox 및 현대적 브라우저를 위한 최적화된 iframe 구현 -->
+        <iframe 
+          id="brow-iframe" 
           src="about:blank" 
           title="브라우저" 
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
@@ -1316,7 +1316,7 @@
           referrerpolicy="no-referrer-when-downgrade"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
           style="flex:1;width:100%;border:none;background:#fff;"
-        ></object>
+        ></iframe>
       </div>
       <div id="brow-resize" title="드래그하여 크기 조절"></div>
     </div>
@@ -3286,7 +3286,7 @@
       // 🌐  브라우저 오버레이
       // ═══════════════════════════════════════════════════════════════
       const BROWSER_HOME_URL =
-        "https://luckysexyqueen.github.io/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260803/";
+        "https://cdn-ai.onspace.ai/onspace/project/code/latest/9bhrqx-GkGYUDNiAr2HBAyroGkqwW-1785893639397366/index.html?_v=1785893641";
 
       function openBrowserOverlay() {
         const brow = document.getElementById("brow");
