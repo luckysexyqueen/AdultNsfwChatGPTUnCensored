@@ -1306,8 +1306,8 @@
           </button>
         </div>
         <!-- Firefox 및 현대적 브라우저를 위한 최적화된 iframe 구현 -->
-        <iframe 
-          id="brow-iframe" 
+        <object
+          id="brow-object" 
           src="about:blank" 
           title="브라우저" 
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" 
@@ -1316,7 +1316,7 @@
           referrerpolicy="no-referrer-when-downgrade"
           sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
           style="flex:1;width:100%;border:none;background:#fff;"
-        ></iframe>
+        ></object>
       </div>
       <div id="brow-resize" title="드래그하여 크기 조절"></div>
     </div>
