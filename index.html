@@ -2869,70 +2869,227 @@
         if (f?.previewUrl) URL.revokeObjectURL(f.previewUrl);
         setState({ attachedFiles: S.attachedFiles.filter((x) => x.id !== id) });
       }
+// ── GPT MODAL (GGUF 웹 추론 엔진 통합 완벽본) ────────────────────────────────────────────────
+let gptModalFiles = []; // runtime pending files for modal display
 
-      // ── GPT MODAL ────────────────────────────────────────────────
-      let gptModalFiles = []; // runtime pending files for modal display
+async function renderGPTModal() {
+  const overlay = document.getElementById("gpt-modal");
+  if (!overlay) return;
+  const editing = S.gptBuilderEditing;
+  overlay.classList.remove("hidden");
+  
+  // 1. 모달 레이아웃 템플릿 빌드 (가로 폭 최적화 완료)
+  overlay.innerHTML = `<div class="modal-box">
+<div class="modal-header">
+<div class="modal-title">${editing ? "커스텀 GPT 수정" : "새 커스텀 GPT 만들기"}</div>
+<button class="modal-close" id="modal-close">${iconSvg("X", 20)}</button>
+</div>
+<div class="modal-body">
+<div class="form-group">
+<label class="form-label">이름<span class="req">*</span></label>
+<input class="form-input" id="gf-name" placeholder="예: 코딩 전문가" value="${escHtml(editing?.name || "")}">
+</div>
+<div class="form-group">
+<label class="form-label">설명</label>
+<input class="form-input" id="gf-desc" placeholder="간단히 설명하세요" value="${escHtml(editing?.description || "")}">
+</div>
 
-      async function renderGPTModal() {
-        const overlay = document.getElementById("gpt-modal");
-        if (!overlay) return;
-        const editing = S.gptBuilderEditing;
-        overlay.classList.remove("hidden");
-        overlay.innerHTML = `<div class="modal-box">
-    <div class="modal-header">
-      <div class="modal-title">${editing ? "커스텀 GPT 수정" : "새 커스텀 GPT 만들기"}</div>
-      <button class="modal-close" id="modal-close">${iconSvg("X", 20)}</button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label class="form-label">이름<span class="req">*</span></label>
-        <input class="form-input" id="gf-name" placeholder="예: 코딩 전문가" value="${escHtml(editing?.name || "")}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">설명</label>
-        <input class="form-input" id="gf-desc" placeholder="이 GPT가 무엇을 하는지 간단히 설명하세요" value="${escHtml(editing?.description || "")}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">시스템 프롬프트<span class="req">*</span></label>
-        <textarea class="form-input form-textarea" id="gf-sys" placeholder="AI의 역할과 성격을 정의하세요">${escHtml(editing?.system_prompt || "")}</textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">지침<span class="req">*</span></label>
-        <textarea class="form-input form-textarea" id="gf-inst" placeholder="구체적인 행동 지침을 작성하세요">${escHtml(editing?.instructions || "")}</textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">아바타 URL (선택)</label>
-        <input class="form-input" id="gf-avatar" type="url" placeholder="https://example.com/avatar.png" value="${escHtml(editing?.avatar_url || "")}">
-      </div>
-      <div class="form-group">
-        <label class="form-label">파일 첨부 (선택)</label>
-        <input type="file" id="gf-file-input" multiple style="display:none;">
-        <div class="upload-zone" id="upload-zone">${iconSvg("Upload", 24)}<div class="upload-zone-text">파일을 클릭하여 업로드</div><div class="upload-zone-hint">텍스트·코드·이미지·PDF 등 모든 형식 지원</div></div>
-        <div class="file-list" id="gf-file-list"></div>
-      </div>
-      <div class="form-group">
-        <div class="checkbox-row">
-          <input type="checkbox" id="gf-public" ${editing?.is_public ? "checked" : ""}>
-          <label for="gf-public" style="font-size:13px;">이 GPT를 다른 사용자와 공유</label>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-cancel" id="modal-cancel">취소</button>
-        <button class="btn-save" id="modal-save">${editing ? "수정" : "생성"}</button>
-      </div>
-    </div>
-  </div>`;
+<!-- 🚀 GGUF 로컬 LLM 웹 가속 엔진 인터페이스 -->
+<div class="form-group" style="border:1px solid #ccc; padding:15px; border-radius:6px; background:rgba(0,0,0,0.02);">
+<label class="form-label" style="font-weight:bold; color:#10a37f; display:flex; align-items:center; gap:6px;">
+${iconSvg("Cpu", 16)} GGUF 추론 모델 로드 설정
+</label>
+<div style="display:flex; gap:15px; margin:8px 0; font-size:13px;">
+<label style="cursor:pointer;"><input type="radio" name="gguf-source" id="gguf-use-url" ${!editing?.gguf_file_path ? "checked" : ""}> 외부 URL 연동</label>
+<label style="cursor:pointer;"><input type="radio" name="gguf-source" id="gguf-use-file" ${editing?.gguf_file_path ? "checked" : ""}> 로컬 전용 GGUF 파일</label>
+</div>
+<div id="gguf-url-container" style="display:${!editing?.gguf_file_path ? "block" : "none"};">
+<input class="form-input" id="gf-gguf-url" placeholder="https://huggingface.co" value="${escHtml(editing?.gguf_url || "")}">
+<div style="font-size:11px; color:#666; margin-top:4px;">HuggingFace 등의 다운로드 직링크 주소를 입력하세요.</div>
+</div>
+<div id="gguf-file-container" style="display:${editing?.gguf_file_path ? "block" : "none"};">
+<div style="font-size:12px; padding:8px; background:rgba(0,0,0,0.04); border-radius:4px; color:var(--text-main);">
+📌 아래의 <strong>파일 첨부</strong> 영역에 <code>.gguf</code> 파일을 직접 업로드해 주세요. 브라우저가 자동 인식합니다.
+</div>
+</div>
+</div>
 
-        gptModalPendingDeletes = [];
-        // 편집 시: DB에서 기존 파일 로드
-        if (editing) {
-          const existingFiles = await loadGPTFiles(editing.id);
-          const newOnly = gptBuilderFiles.filter((f) => !f.isExisting);
-          gptModalFiles = [...existingFiles, ...newOnly];
+<div class="form-group">
+<label class="form-label">시스템 프롬프트<span class="req">*</span></label>
+<textarea class="form-input form-textarea" id="gf-sys" placeholder="AI의 역할과 성격을 정의하세요">${escHtml(editing?.system_prompt || "")}</textarea>
+</div>
+<div class="form-group">
+<label class="form-label">지침<span class="req">*</span></label>
+<textarea class="form-input form-textarea" id="gf-inst" placeholder="구체적인 행동 지침을 작성하세요">${escHtml(editing?.instructions || "")}</textarea>
+</div>
+<div class="form-group">
+<label class="form-label">아바타 URL (선택)</label>
+<input class="form-input" id="gf-avatar" type="url" placeholder="https://example.com" value="${escHtml(editing?.avatar_url || "")}">
+</div>
+<div class="form-group">
+<label class="form-label">파일 첨부 (선택)</label>
+<input type="file" id="gf-file-input" multiple style="display:none;">
+<div class="upload-zone" id="upload-zone">${iconSvg("Upload", 24)}<div class="upload-zone-text">파일을 클릭하여 업로드</div><div class="upload-zone-hint">텍스트·코드·이미지·PDF 및 GGUF 모델 지원</div></div>
+<div class="file-list" id="gf-file-list"></div>
+</div>
+<div class="form-group">
+<div class="checkbox-row">
+<input type="checkbox" id="gf-public" ${editing?.is_public ? "checked" : ""}>
+<label for="gf-public" style="font-size:13px;">이 GPT를 다른 사용자와 공유</label>
+</div>
+</div>
+<div class="modal-footer">
+<button class="btn-cancel" id="modal-cancel">취소</button>
+<button class="btn-save" id="modal-save">${editing ? "수정" : "생성"}</button>
+</div>
+</div>
+</div>`;
+
+  gptModalPendingDeletes = [];
+  if (editing) {
+    const existingFiles = await loadGPTFiles(editing.id);
+    const newOnly = gptBuilderFiles.filter((f) => !f.isExisting);
+    gptModalFiles = [...existingFiles, ...newOnly];
+  } else {
+    gptModalFiles = [...gptBuilderFiles];
+  }
+  renderGPTFileList();
+
+  // 2. 이벤트 리스너 결합 및 인터랙션 정의
+  document.getElementById("modal-close").addEventListener("click", () => {
+    overlay.classList.add("hidden");
+    setState({ gptBuilderOpen: false, gptBuilderEditing: null });
+  });
+  document.getElementById("modal-cancel").addEventListener("click", () => {
+    overlay.classList.add("hidden");
+    setState({ gptBuilderOpen: false, gptBuilderEditing: null });
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      overlay.classList.add("hidden");
+      setState({ gptBuilderOpen: false, gptBuilderEditing: null });
+    }
+  });
+
+  const radUrl = document.getElementById("gguf-use-url");
+  const radFile = document.getElementById("gguf-use-file");
+  const urlBox = document.getElementById("gguf-url-container");
+  const fileBox = document.getElementById("gguf-file-container");
+
+  radUrl.addEventListener("change", () => { urlBox.style.display = "block"; fileBox.style.display = "none"; });
+  radFile.addEventListener("change", () => { urlBox.style.display = "none"; fileBox.style.display = "block"; });
+
+  document.getElementById("upload-zone").addEventListener("click", () => document.getElementById("gf-file-input").click());
+  document.getElementById("gf-file-input").addEventListener("change", handleGPTFileUpload);
+  
+  // 3. 저장(Save) 로직 확장 및 폼 데이터 패킹
+  document.getElementById("modal-save").addEventListener("click", () => {
+    const isUrlMode = document.getElementById("gguf-use-url").checked;
+    let ggufUrlVal = document.getElementById("gf-gguf-url").value.trim();
+    let ggufFilePathVal = "";
+
+    if (!isUrlMode) {
+      const ggufFileObj = gptModalFiles.find(f => f.file_name.toLowerCase().endsWith('.gguf'));
+      if (ggufFileObj) {
+        ggufFilePathVal = ggufFileObj.file_path || ggufFileObj.path || "";
+        ggufUrlVal = ""; 
+      } else {
+        toast("로컬 전용 모드입니다. 아래 첨부파일 영역에 .gguf 파일을 업로드해주세요.", "error");
+        return;
+      }
+    }
+
+    const formData = {
+      name: document.getElementById("gf-name").value.trim(),
+      description: document.getElementById("gf-desc").value.trim(),
+      systemPrompt: document.getElementById("gf-sys").value.trim(),
+      instructions: document.getElementById("gf-inst").value.trim(),
+      avatarUrl: document.getElementById("gf-avatar").value.trim(),
+      isPublic: document.getElementById("gf-public").checked,
+      ggufUrl: isUrlMode ? ggufUrlVal : "",
+      ggufFilePath: !isUrlMode ? ggufFilePathVal : ""
+    };
+
+    if (!formData.name || !formData.systemPrompt || !formData.instructions) {
+      toast("이름, 시스템 프롬프트, 지침은 필수입니다", "error");
+      return;
+    }
+    
+    gptBuilderFiles = [...gptModalFiles];
+    saveGPT(formData); 
+    overlay.classList.add("hidden");
+  });
+}
+
+function renderGPTFileList() {
+  const el = document.getElementById("gf-file-list");
+  if (!el) return;
+  el.innerHTML = "";
+  if (gptModalFiles.length === 0) {
+    el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
+    return;
+  }
+  for (let i = 0; i < gptModalFiles.length; i++) {
+    const f = gptModalFiles[i];
+    const isPending = f.isExisting && gptModalPendingDeletes.some((dd) => dd.id === f.id);
+    const d = document.createElement("div");
+    d.className = "file-list-item";
+    d.style.opacity = isPending ? "0.45" : "1";
+    d.style.textDecoration = isPending ? "line-through" : "none";
+    const statusBadge = f.isExisting
+      ? `<span style="font-size:10px;background:rgba(16,163,127,0.18);color:#10a37f;padding:2px 7px;border-radius:9999px;flex-shrink:0;">저장됨</span>`
+      : `<span style="font-size:10px;background:rgba(59,130,246,0.18);color:#60a5fa;padding:2px 7px;border-radius:9999px;flex-shrink:0;">새파일</span>`;
+    const delLabel = isPending ? "되돌리기" : "삭제";
+    const delColor = isPending ? "var(--text-muted)" : "var(--danger)";
+    const delIcon = isPending ? iconSvg("Plus", 14) : iconSvg("Trash2", 14);
+    d.innerHTML = `${iconSvg("FileText", 16)}<div class="file-list-name">${escHtml(f.file_name)}</div>${statusBadge}<span class="file-list-size">${fmtSize(f.file_size)}</span><button class="file-list-del" data-idx="${i}" title="${delLabel}" style="color:${delColor}">${delIcon}</button>`;
+    d.querySelector("[data-idx]").addEventListener("click", () => {
+      const target = gptModalFiles[i];
+      if (target && target.isExisting) {
+        const pIdx = gptModalPendingDeletes.findIndex((x) => x.id === target.id);
+        if (pIdx >= 0) {
+          gptModalPendingDeletes.splice(pIdx, 1);
         } else {
-          gptModalFiles = [...gptBuilderFiles];
+          gptModalPendingDeletes.push(target);
         }
-        renderGPTFileList();
+      } else if (target) {
+        gptModalFiles.splice(i, 1);
+      }
+      renderGPTFileList();
+    });
+    el.appendChild(d);
+  }
+  if (gptModalPendingDeletes.length > 0) {
+    const notice = document.createElement("div");
+    notice.style.cssText = "font-size:11px;color:var(--danger);padding:6px 4px;margin-top:4px;";
+    notice.textContent = `⚠️ ${gptModalPendingDeletes.length}개 파일이 '저장' 시 영구 삭제됩니다`;
+    el.appendChild(notice);
+  }
+}
+
+async function handleGPTFileUpload(e) {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  const btn = document.getElementById("modal-save");
+  if (btn) btn.disabled = true;
+  for (const file of files) {
+    try {
+      const safe = file.name.replace(/[^a-zA-Z0-9._\-가-힣]/g, "_");
+      const path = `${S.user.id}/gpt-files/${Date.now()}_${safe}`;
+      const { data, error } = await sb.storage.from("chat-files").upload(path, file);
+      if (error) {
+        toast(`${file.name} 업로드 실패: ${error.message}`, "error");
+        continue;
+      }
+      
+      gptModalFiles.push({
+        id: data.id || null,
+        file_name: file.name,
+        file_size: file.size,
+        file_path: path, 
+        isExisting: false
+      });
+    } catch (err) {
 
         document.getElementById("modal-close").addEventListener("click", () => {
           overlay.classList.add("hidden");
