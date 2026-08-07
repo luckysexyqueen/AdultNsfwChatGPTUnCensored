@@ -13,10 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
          파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-    <script
-      src="/env-config.js"
-      onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
-    ></script>
+    <script src="/env-config.js" onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"></script>
     <!-- LocalForage -->
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
@@ -175,7 +172,7 @@
       }
 
       /* ===== SCROLLBAR ===== */
-      ::-webkit-scrollbar {
+    ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
       }
@@ -244,9 +241,7 @@
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
+        transition: background 0.15s, border-color 0.15s;
       }
       .sidebar-toggle-btn:hover {
         background: var(--bg4);
@@ -478,9 +473,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition:
-          background 0.15s,
-          border-color 0.15s;
+        transition: background 0.15s, border-color 0.15s;
       }
       .browser-toggle-btn:hover {
         background: var(--bg4);
@@ -1288,38 +1281,20 @@
     <div id="brow">
       <div id="brow-content">
         <div id="brow-tb">
-          <button id="brow-back" class="input-box-btn" style="border-radius: 7px; min-height: 34px; color: #fff">
-            <i class="fa-solid fa-xmark"></i>
-            &nbsp;닫기
+          <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
+            <i class="fa-solid fa-xmark"></i>&nbsp;닫기
           </button>
           <div id="brow-url">
-            <i class="fa-solid fa-lock" style="color: #4ade80; margin-right: 4px"></i>
-            GoldFireDragonBrowser
+            <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
           </div>
-          <button
-            id="brow-reload"
-            class="input-box-btn"
-            style="width: 32px; height: 32px; color: #fff"
-            title="새로고침"
-          >
+          <button id="brow-reload" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새로고침">
             <i class="fa-solid fa-rotate-right"></i>
           </button>
-          <button
-            id="brow-newtab"
-            class="input-box-btn"
-            style="width: 32px; height: 32px; color: #fff"
-            title="새 탭에서 열기"
-          >
+          <button id="brow-newtab" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새 탭에서 열기">
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
           </button>
         </div>
-        <iframe
-          id="brow-iframe"
-          src="about:blank"
-          title="브라우저"
-          allowfullscreen=""
-          style="flex: 1; width: 100%; border: none"
-        ></iframe>
+        <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
       </div>
       <div id="brow-resize" title="드래그하여 크기 조절"></div>
     </div>
@@ -1854,7 +1829,11 @@
         if (!uid) return;
         try {
           const { data, error } = await withTimeout(
-            sb.from("conversations").select("*").eq("user_id", uid).order("updated_at", { ascending: false }),
+            sb
+              .from("conversations")
+              .select("*")
+              .eq("user_id", uid)
+              .order("updated_at", { ascending: false }),
             8000,
             { data: null, error: new Error("timeout") },
           );
@@ -2213,7 +2192,7 @@
             .eq("custom_gpt_id", gptId)
             .order("created_at", { ascending: true });
           if (error) throw error;
-          return (data || []).map((f) => ({ ...f, isExisting: true }));
+          return (data || []).map(f => ({ ...f, isExisting: true }));
         } catch (e) {
           console.error("GPT 파일 로드 실패:", e);
           return [];
@@ -2927,7 +2906,7 @@
         // 편집 시: DB에서 기존 파일 로드
         if (editing) {
           const existingFiles = await loadGPTFiles(editing.id);
-          const newOnly = gptBuilderFiles.filter((f) => !f.isExisting);
+          const newOnly = gptBuilderFiles.filter(f => !f.isExisting);
           gptModalFiles = [...existingFiles, ...newOnly];
         } else {
           gptModalFiles = [...gptBuilderFiles];
@@ -2976,13 +2955,12 @@
         if (!el) return;
         el.innerHTML = "";
         if (gptModalFiles.length === 0) {
-          el.innerHTML =
-            '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
+          el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
           return;
         }
         for (let i = 0; i < gptModalFiles.length; i++) {
           const f = gptModalFiles[i];
-          const isPending = f.isExisting && gptModalPendingDeletes.some((dd) => dd.id === f.id);
+          const isPending = f.isExisting && gptModalPendingDeletes.some(dd => dd.id === f.id);
           const d = document.createElement("div");
           d.className = "file-list-item";
           d.style.opacity = isPending ? "0.45" : "1";
@@ -2998,7 +2976,7 @@
             const target = gptModalFiles[i];
             if (target && target.isExisting) {
               // 기존 DB 파일: 삭제 예정 토글
-              const pIdx = gptModalPendingDeletes.findIndex((x) => x.id === target.id);
+              const pIdx = gptModalPendingDeletes.findIndex(x => x.id === target.id);
               if (pIdx >= 0) {
                 gptModalPendingDeletes.splice(pIdx, 1);
               } else {
@@ -3286,7 +3264,7 @@
       // 🌐  브라우저 오버레이
       // ═══════════════════════════════════════════════════════════════
       const BROWSER_HOME_URL =
-        "https://cdn-ai.onspace.ai/onspace/project/code/latest/9bhrqx-fxFSK9epFvzvsrhp96aAA2-1786020450838174/index.html?_v=1786020457";
+        "https://cdn-ai.onspace.ai/onspace/project/code/latest/9bhrqx-fNE8DmdrUvoEoPPGvbCF6e-1785941036929897/index.html?_v=1785941043";
 
       function openBrowserOverlay() {
         const brow = document.getElementById("brow");
@@ -3411,200 +3389,5 @@
         });
       }
     </script>
-
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Local GGUF Metadata Engine</title>
-    <style>
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        max-width: 900px;
-        margin: 20px auto;
-        padding: 0 20px;
-        background-color: #f9f9f9;
-        color: #333;
-      }
-      h1 {
-        color: #111;
-      }
-      .drop-zone {
-        border: 2px dashed #4f46e5;
-        border-radius: 8px;
-        padding: 40px;
-        text-align: center;
-        background-color: #fff;
-        cursor: pointer;
-        transition: background 0.2s;
-      }
-      .drop-zone:hover {
-        background-color: #f5f3ff;
-      }
-      .status {
-        margin-top: 15px;
-        font-weight: bold;
-        color: #4f46e5;
-      }
-      .section {
-        background: #fff;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 20px;
-        margin-top: 20px;
-        display: none;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 10px;
-      }
-      th,
-      td {
-        text-align: left;
-        padding: 8px 12px;
-        border-bottom: 1px solid #e5e7eb;
-        font-size: 14px;
-      }
-      th {
-        background-color: #f3f4f6;
-      }
-      pre {
-        background: #f4f4f5;
-        padding: 12px;
-        border-radius: 6px;
-        overflow-x: auto;
-        font-size: 13px;
-      }
-    </style>
-    <!-- Importing the Hugging Face GGUF parser via an ES Module compatible CDN -->
-    <script type="module">
-      import { gguf } from "https://jsdelivr.net";
-
-      document.getElementById("fileInput").addEventListener("change", handleFile);
-      const dropZone = document.getElementById("dropZone");
-
-      dropZone.addEventListener("click", () => document.getElementById("fileInput").click());
-      dropZone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZone.style.background = "#f5f3ff";
-      });
-      dropZone.addEventListener("dragleave", () => (dropZone.style.background = "#fff"));
-      dropZone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        dropZone.style.background = "#fff";
-        if (e.dataTransfer.files.length > 0) {
-          document.getElementById("fileInput").files = e.dataTransfer.files;
-          handleFile({ target: document.getElementById("fileInput") });
-        }
-      });
-
-      async function handleFile(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const status = document.getElementById("status");
-        status.textContent = `Reading "${file.name}" binary headers...`;
-
-        try {
-          // Read the GGUF file structure using the library
-          const { metadata, tensorInfos } = await gguf(file);
-
-          status.textContent = "Successfully parsed GGUF metadata!";
-
-          // Show hidden sections
-          document.getElementById("metaSection").style.display = "block";
-          document.getElementById("tensorSection").style.display = "block";
-
-          // Display General Info / Architecture
-          const arch = metadata["general.architecture"] || "Unknown";
-          document.getElementById("archInfo").textContent = arch;
-
-          // Render Metadata Key-Values
-          const metaBody = document.getElementById("metadataBody");
-          metaBody.innerHTML = "";
-          Object.keys(metadata)
-            .sort()
-            .forEach((key) => {
-              const row = document.createElement("tr");
-              let val = metadata[key];
-              if (typeof val === "object") val = JSON.stringify(val);
-
-              row.innerHTML = `<td><strong>${key}</strong></td><td>${val}</td>`;
-              metaBody.appendChild(row);
-            });
-
-          // Render Tensor Breakdown
-          const tensorBody = document.getElementById("tensorBody");
-          tensorBody.innerHTML = "";
-          // List up to the first 20 tensors so the UI stays lightning fast
-          const previewTensors = tensorInfos.slice(0, 20);
-          previewTensors.forEach((tensor) => {
-            const row = document.createElement("tr");
-            row.innerHTML = `
-                        <td>${tensor.name}</td>
-                        <td>${tensor.dtype}</td>
-                        <td>[${tensor.shape.join(", ")}]</td>
-                    `;
-            tensorBody.appendChild(row);
-          });
-
-          if (tensorInfos.length > 20) {
-            const extraRow = document.createElement("tr");
-            extraRow.innerHTML = `<td colspan="3" style="text-align:center;color:#6b7280;">...and ${tensorInfos.length - 20} more tensors</td>`;
-            tensorBody.appendChild(extraRow);
-          }
-        } catch (error) {
-          console.error(error);
-          status.textContent = "Error parsing file. Make sure it is a valid .gguf format.";
-        }
-      }
-    </script>
-
-    <h1>Local GGUF Loader &amp; Engine Metadata Viewer</h1>
-    <p>
-      Select or drag a local Large Language Model
-      <code>.gguf</code>
-      file to inspect its architectural configurations inside your browser sandbox.
-    </p>
-
-    <div class="drop-zone" id="dropZone">
-      <strong>Drag &amp; Drop your GGUF file here</strong>
-      or click to browse files.
-      <input type="file" id="fileInput" accept=".gguf" style="display: none" />
-    </div>
-
-    <div class="status" id="status">Ready.</div>
-
-    <!-- Metadata Display Section -->
-    <div class="section" id="metaSection">
-      <h3>Model Configuration Details</h3>
-      <p>
-        <strong>Detected Architecture:</strong>
-        <span id="archInfo" style="color: #4f46e5; font-weight: bold"></span>
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 35%">Metadata Configuration Key</th>
-            <th>Value</th>
-          </tr>
-        </thead>
-        <tbody id="metadataBody"></tbody>
-      </table>
-    </div>
-
-    <!-- Tensor Display Section -->
-    <div class="section" id="tensorSection">
-      <h3>Model Tensors Matrix Info</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Tensor Weights Name</th>
-            <th>Data Type (Quantization)</th>
-            <th>Shape Structure</th>
-          </tr>
-        </thead>
-        <tbody id="tensorBody"></tbody>
-      </table>
-    </div>
   </body>
 </html>
