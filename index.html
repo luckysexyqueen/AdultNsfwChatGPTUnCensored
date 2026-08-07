@@ -3557,5 +3557,176 @@
         });
       }
     </script>
+
+    <!-- GPT builder fallback + binding script (inserted by Copilot) -->
+<script>
+  (function () {
+    if (!window.renderGPTModal) {
+      window.renderGPTModal = async function () {
+        try {
+          const S = (window.S = window.S || {});
+          const setState =
+            window.setState ||
+            function (s) {
+              Object.assign(window.S, s);
+            };
+          const render = window.render || function () {};
+          const toast = window.toast || function () {};
+
+          if (typeof render === "function") {
+            setState({ gptBuilderOpen: true, gptBuilderEditing: null });
+            try {
+              render();
+            } catch (e) {}
+            await new Promise((r) => setTimeout(r, 120));
+            if (document.getElementById("gpt-modal")) return;
+          }
+
+          let modal = document.getElementById("gpt-modal-fallback");
+          if (!modal) {
+            modal = document.createElement("div");
+            modal.id = "gpt-modal-fallback";
+            Object.assign(modal.style, {
+              position: "fixed",
+              inset: "0",
+              zIndex: 2147483647,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.35)",
+            });
+
+            const box = document.createElement("div");
+            box.style.cssText =
+              "width:92%;max-width:720px;background:var(--bg2,#2f2f2f);color:var(--text,#fff);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,0.6);";
+            box.innerHTML = `
+            <h3 style="margin:0 0 8px 0;font-size:18px">커스텀 GPT 빌더 (임시)</h3>
+            <input id="fb-gpt-name" placeholder="이름" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);margin-bottom:8px;background:transparent;color:inherit" />
+            <textarea id="fb-gpt-desc" placeholder="설명" style="width:100%;height:120px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit"></textarea>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+              <button id="fb-gpt-cancel" style="padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:transparent;color:inherit;cursor:pointer">취소</button>
+              <button id="fb-gpt-save" style="padding:8px 12px;border-radius:8px;border:none;background:var(--accent,#10a37f);color:#fff;cursor:pointer">저장</button>
+            </div>
+            <div id="fb-gpt-note" style="margin-top:8px;color:rgba(255,255,255,0.6);font-size:12px"></div>
+          `;
+            modal.appendChild(box);
+            document.body.appendChild(modal);
+
+            document.getElementById("fb-gpt-cancel").addEventListener("click", () => modal.remove());
+
+            document.getElementById("fb-gpt-save").addEventListener("click", async () => {
+              const name = (document.getElementById("fb-gpt-name").value || "").trim();
+              const desc = (document.getElementById("fb-gpt-desc").value || "").trim();
+              if (!name) {
+                if (window.toast) window.toast("이름을 입력하세요", "error");
+                else alert("이름을 입력하세요");
+                return;
+              }
+
+              try {
+                const g = {
+                  id: `local_gpt_${Date.now()}`,
+                  name,
+                  description: desc,
+                  created_at: new Date().toISOString(),
+                };
+                if (window.localforage) {
+                  const cur = (await localforage.getItem("custom_gpts_v1")) || [];
+                  cur.unshift(g);
+                  await localforage.setItem("custom_gpts_v1", cur);
+                } else {
+                  const cur = JSON.parse(localStorage.getItem("custom_gpts_v1") || "[]");
+                  cur.unshift(g);
+                  localStorage.setItem("custom_gpts_v1", JSON.stringify(cur));
+                }
+
+                window.S = window.S || {};
+                window.S.customGPTs = window.S.customGPTs || [];
+                window.S.customGPTs.unshift(g);
+                if (window.updateGPTSection)
+                  try {
+                    window.updateGPTSection();
+                  } catch (e) {}
+                if (window.render)
+                  try {
+                    window.render();
+                  } catch (e) {}
+
+                if (window.toast) window.toast("저장되었습니다", "success");
+                else alert("저장되었습니다");
+                modal.remove();
+              } catch (err) {
+                console.error("save fallback gpt error", err);
+                alert("저장 중 오류가 발생했습니다");
+              }
+            });
+
+            const escHandler = (ev) => {
+              if (ev.key === "Escape") {
+                modal.remove();
+                window.removeEventListener("keydown", escHandler);
+              }
+            };
+            window.addEventListener("keydown", escHandler);
+          } else {
+            modal.style.display = "flex";
+          }
+        } catch (err) {
+          console.error("renderGPTModal fallback error", err);
+        }
+      };
+    }
+
+    function bindButtonsOnce() {
+      const nodes = Array.from(document.querySelectorAll(".btn-create-gpt, #btn-create-gpt"));
+      nodes.forEach((btn) => {
+        if (btn.dataset._gptBound) return;
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          try {
+            if (window.renderGPTModal) window.renderGPTModal();
+            else {
+              window.S = window.S || {};
+              window.S.gptBuilderOpen = true;
+              if (window.render) window.render();
+            }
+          } catch (err) {
+            console.error(err);
+          }
+        });
+        btn.dataset._gptBound = "1";
+      });
+
+      if (!document.body.dataset._gptDelegate) {
+        document.body.addEventListener("click", function (e) {
+          const b = e.target.closest && e.target.closest(".btn-create-gpt, #btn-create-gpt");
+          if (b) {
+            e.preventDefault();
+            try {
+              if (window.renderGPTModal) window.renderGPTModal();
+              else {
+                window.S = window.S || {};
+                window.S.gptBuilderOpen = true;
+                if (window.render) window.render();
+              }
+            } catch (err) {
+              console.error(err);
+            }
+          }
+        });
+        document.body.dataset._gptDelegate = "1";
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      bindButtonsOnce();
+      const iv = setInterval(bindButtonsOnce, 1000);
+      setTimeout(() => clearInterval(iv), 30000);
+    });
+
+    if (document.readyState === "interactive" || document.readyState === "complete") bindButtonsOnce();
+  })();
+</script>
+    
   </body>
 </html>
