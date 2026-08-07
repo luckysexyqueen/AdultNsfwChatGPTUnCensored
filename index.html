@@ -11,12 +11,8 @@
     <link rel="apple-touch-icon" href="/icon.png" />
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
-         파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-    <script
-      src="/env-config.js"
-      onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
-    ></script>
+    <!-- 🔑 env-config.js는 런타임에 generate-env-config.js가 생성 — Vite 번들 대상 아님.
+         없으면 localStorage → 입력폼 순서로 자동 진행됩니다. -->
     <!-- LocalForage -->
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
@@ -3563,7 +3559,7 @@
         });
 
         // 실제 채팅 추론 테스트 제어 핸들러
-        async function runLocalInference(prompt) {
+        async function runLocalInference() {
             const prompt = userInput.value.trim();
             if (!prompt || !wllamaInstance) return;
 
@@ -3601,8 +3597,8 @@
             return div;
         }
 
-        sendBtn.addEventListener('click', runInference);
-        userInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') runInference(); });
+        sendBtn.addEventListener('click', runLocalInference);
+        userInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') runLocalInference(); });
     
     
     // Override sendMessage to handle local GGUF
