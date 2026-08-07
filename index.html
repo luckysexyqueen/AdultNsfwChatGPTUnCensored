@@ -13,10 +13,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
          파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-    <script
-      src="/env-config.js"
-      onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
-    ></script>
+
     <!-- LocalForage -->
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
@@ -3692,7 +3689,7 @@
       });
 
       // 실제 채팅 추론 테스트 제어 핸들러
-      async function runLocalGGUFInference(prompt) {
+      async function runLocalGGUFInference() {
         const prompt = userInput.value.trim();
         if (!prompt || !wllamaInstance) return;
 
@@ -3730,9 +3727,9 @@
         return div;
       }
 
-      sendBtn.addEventListener("click", runInference);
+      sendBtn.addEventListener("click", runLocalGGUFInference);
       userInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") runInference();
+        if (e.key === "Enter") runLocalGGUFInference();
       });
 
       // Hook into the main app's sendMessage function
