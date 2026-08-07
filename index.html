@@ -2910,33 +2910,12 @@
         <div class="upload-zone" id="upload-zone">${iconSvg("Upload", 24)}<div class="upload-zone-text">파일을 클릭하여 업로드</div><div class="upload-zone-hint">텍스트·코드·이미지·PDF 등 모든 형식 지원</div></div>
         <div class="file-list" id="gf-file-list"></div>
       </div>
-      <div class="form-group" style="border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px;">
-        <label class="form-label" style="display: flex; align-items: center; gap: 8px;">${iconSvg("Zap", 14)} GGUF 모델 임포트 (선택)</label>
-        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">로컬 GGUF 파일 또는 외부 URL에서 모델을 임포트합니다</div>
-        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;">
-            <input type="radio" name="gguf-source" value="url" checked style="cursor: pointer;">
-            URL 입력
-          </label>
-          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 13px;">
-            <input type="radio" name="gguf-source" value="file" style="cursor: pointer;">
-            로컬 파일
-          </label>
-        </div>
-        <input type="text" id="gguf-url" placeholder="https://huggingface.co/..." class="form-input" style="margin-bottom: 8px;">
-        <input type="file" id="gguf-file" accept=".gguf" style="display:none;">
-        <button type="button" id="gguf-file-btn" class="form-input" style="background: var(--bg4); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; color: var(--text-muted); cursor: pointer; text-align: left; display: none;">GGUF 파일 선택...</button>
-        <button type="button" id="gguf-load-btn" style="width: 100%; padding: 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; color: var(--text); cursor: pointer; font-size: 13px; margin-top: 8px; transition: background 0.15s;" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background='var(--bg3)'">모델 로드 및 테스트</button>
-        <div id="gguf-status" style="font-size: 12px; color: var(--text-muted); margin-top: 8px; padding: 8px; background: var(--bg4); border-radius: 6px; display: none;">상태: 대기 중</div>
-        <div id="gguf-output" style="font-size: 12px; color: var(--text-muted); margin-top: 8px; padding: 8px; background: var(--bg4); border-radius: 6px; max-height: 120px; overflow-y: auto; display: none; white-space: pre-wrap; word-break: break-word;"></div>
-      </div>
       <div class="form-group">
         <div class="checkbox-row">
           <input type="checkbox" id="gf-public" ${editing?.is_public ? "checked" : ""}>
           <label for="gf-public" style="font-size:13px;">이 GPT를 다른 사용자와 공유</label>
         </div>
       </div>
-      <div id="gguf-controls" style="display: none;"></div>
       <div class="modal-footer">
         <button class="btn-cancel" id="modal-cancel">취소</button>
         <button class="btn-save" id="modal-save">${editing ? "수정" : "생성"}</button>
@@ -3394,131 +3373,6 @@
       }
 
       // ═══════════════════════════════════════════════════════════════
-      // 🚀  GGUF 모델 임포트 로직 (커스텀 GPT 빌더 내 통합)
-      // ═══════════════════════════════════════════════════════════════
-      let ggufWllama = null;
-
-      function initGGUFControls() {
-        const sourceRadios = document.querySelectorAll('input[name="gguf-source"]');
-        const urlInput = document.getElementById("gguf-url");
-        const fileBtn = document.getElementById("gguf-file-btn");
-        const fileInput = document.getElementById("gguf-file");
-        const loadBtn = document.getElementById("gguf-load-btn");
-        const statusDiv = document.getElementById("gguf-status");
-        const outputDiv = document.getElementById("gguf-output");
-
-        if (!sourceRadios.length) return;
-
-        sourceRadios.forEach((radio) => {
-          radio.addEventListener("change", (e) => {
-            if (e.target.value === "url") {
-              urlInput.style.display = "block";
-              fileBtn.style.display = "none";
-            } else {
-              urlInput.style.display = "none";
-              fileBtn.style.display = "block";
-            }
-          });
-        });
-
-        fileBtn?.addEventListener("click", () => {
-          fileInput?.click();
-        });
-
-        fileInput?.addEventListener("change", (e) => {
-          const file = e.target.files?.[0];
-          if (file) {
-            fileBtn.textContent = `✓ ${file.name}`;
-            fileBtn.style.color = "var(--accent)";
-          }
-        });
-
-        loadBtn?.addEventListener("click", async () => {
-          loadBtn.disabled = true;
-          statusDiv.style.display = "block";
-          outputDiv.style.display = "block";
-          statusDiv.textContent = "상태: 시스템 연동 및 하드웨어 가속 레이어 빌드 중...";
-          outputDiv.textContent = "";
-
-          try {
-            // Wllama 동적 로드
-            if (!window.Wllama) {
-              const module = await import("https://cdn.jsdelivr.net/npm/@wllama/wllama@1.14.0/+esm");
-              window.Wllama = module.Wllama;
-            }
-
-            const engineConfig = {
-              "n-gpu-layers": 33,
-            };
-
-            ggufWllama = new window.Wllama(engineConfig);
-
-            const progressCallback = ({ loaded, total }) => {
-              if (total > 0) {
-                const percent = Math.round((loaded / total) * 100);
-                statusDiv.textContent = `상태: 모델 가중치 데이터 메모리 주입 중 (${percent}%)`;
-              }
-            };
-
-            const sourceType = document.querySelector('input[name="gguf-source"]:checked')?.value;
-
-            if (sourceType === "url") {
-              const url = urlInput.value.trim();
-              if (!url) {
-                statusDiv.textContent = "상태: 🔴 URL을 입력해주세요";
-                statusDiv.style.color = "#ef4444";
-                loadBtn.disabled = false;
-                return;
-              }
-              await ggufWllama.loadModelFromUrl(url, { progress_callback: progressCallback });
-            } else {
-              const file = fileInput?.files?.[0];
-              if (!file) {
-                statusDiv.textContent = "상태: 🔴 GGUF 파일을 선택해주세요";
-                statusDiv.style.color = "#ef4444";
-                loadBtn.disabled = false;
-                return;
-              }
-              await ggufWllama.loadModelFromFile(file, { progress_callback: progressCallback });
-            }
-
-            statusDiv.textContent = "상태: 🟢 엔진 로드 완료! 모델 테스트 중...";
-            statusDiv.style.color = "#10a37f";
-
-            // 간단한 테스트 추론
-            const testPrompt = "<|im_start|>user\n안녕하세요<|im_end|>\n<|im_start|>assistant\n";
-            let testOutput = "";
-
-            await ggufWllama.createCompletion(testPrompt, {
-              n_predict: 50,
-              sampling: { temp: 0.7, top_k: 40, top_p: 0.9 },
-              onNewToken: (token, piece, currentText) => {
-                testOutput = currentText;
-                outputDiv.textContent = testOutput;
-              },
-            });
-
-            statusDiv.textContent = "상태: 🟢 모델 로드 및 테스트 완료! 이제 GPT를 저장할 수 있습니다.";
-            statusDiv.style.color = "#10a37f";
-            outputDiv.textContent = testOutput || "테스트 완료";
-          } catch (err) {
-            statusDiv.textContent = `상태: 🔴 오류 - ${err.message}`;
-            statusDiv.style.color = "#ef4444";
-            outputDiv.textContent = `에러: ${err.message}`;
-          } finally {
-            loadBtn.disabled = false;
-          }
-        });
-      }
-
-      // renderGPTModal 함수 내에서 GGUF 컨트롤 초기화
-      const originalRenderGPTModal = renderGPTModal;
-      async function renderGPTModal() {
-        await originalRenderGPTModal();
-        setTimeout(() => initGGUFControls(), 100);
-      }
-
-      // ═══════════════════════════════════════════════════════════════
       // 🚀  BOOT
       // ═══════════════════════════════════════════════════════════════
       (async () => {
@@ -3556,6 +3410,142 @@
           navigator.serviceWorker.register("/sw.js").catch(() => {});
         });
       }
+    </script>
+
+    <meta charset="UTF-8" />
+    <title>GGUF Web Inference Engine</title>
+
+    <!-- 1. 엔진 및 모델 선택 인터페이스 -->
+    <div style="padding: 20px; border: 1px solid #ccc; margin-bottom: 10px">
+      <h3>1. 엔진 및 모델 선택</h3>
+      <label>
+        <input type="radio" name="source" id="useUrl" checked="" />
+        외부 URL 직접 입력:
+      </label>
+      <br />
+      <input type="text" id="modelUrl" value="https://huggingface.co" style="width: 100%; margin: 5px 0" />
+      <br />
+      <br />
+
+      <label>
+        <input type="radio" name="source" id="useFile" />
+        로컬 파일 선택 (.gguf):
+      </label>
+      <br />
+      <input type="file" id="modelFile" accept=".gguf" style="margin: 5px 0" />
+      <br />
+      <br />
+
+      <button id="loadBtn" style="width: 100%; padding: 10px">모델 엔진 로딩 및 구동 준비</button>
+      <p id="status" style="font-weight: bold; color: blue">상태: 대기 중</p>
+    </div>
+
+    <!-- 2. 프롬프트 실행 및 결과 출력 인터페이스 -->
+    <div id="runContainer" style="padding: 20px; border: 1px solid #ccc; display: none">
+      <h3>2. 모델 구동 및 추론 실행</h3>
+      <textarea id="promptInput" style="width: 100%; height: 80px">안녕하세요, 자기소개 해주세요.</textarea>
+      <br />
+      <br />
+      <button id="runBtn" style="width: 100%; padding: 10px; background-color: #4caf50; color: white">
+        추론 구동 (Run Inference)
+      </button>
+
+      <h4>출력 결과:</h4>
+      <div
+        id="output"
+        style="padding: 10px; background: #f0f0f0; min-height: 100px; white-space: pre-wrap; border-radius: 5px"
+      ></div>
+    </div>
+
+    <!-- Wllama 코어 구동 엔진 라이브러리 주입 (WASM 기반 범용 엔진) -->
+    <script type="module">
+      import { Wllama } from "https://jsdelivr.net";
+
+      // 엔진 가속을 위한 실시간 런타임 설정 데이터
+      const engineConfig = {
+        "background-worker": "https://jsdelivr.net",
+        "wasm-sg": "https://jsdelivr.net",
+        "wasm-mt": "https://jsdelivr.net",
+        "wasm-sg-simd": "https://jsdelivr.net",
+        "wasm-mt-simd": "https://jsdelivr.net",
+      };
+
+      let wllama = null;
+
+      const loadBtn = document.getElementById("loadBtn");
+      const runBtn = document.getElementById("runBtn");
+      const status = document.getElementById("status");
+      const runContainer = document.getElementById("runContainer");
+      const output = document.getElementById("output");
+
+      // =======================================================
+      // [파트 1] 모델 데이터 파싱 및 가속 엔진 로드 제어부
+      // =======================================================
+      loadBtn.addEventListener("click", async () => {
+        loadBtn.disabled = true;
+        status.innerText = "상태: 시스템 연동 및 하드웨어 가속 레이어 빌드 중...";
+
+        try {
+          wllama = new Wllama(engineConfig);
+
+          const progressCallback = ({ loaded, total }) => {
+            if (total > 0) {
+              status.innerText = `상태: 모델 가중치 데이터 메모리 주입 중 (${Math.round((loaded / total) * 100)}%)`;
+            }
+          };
+
+          if (document.getElementById("useUrl").checked) {
+            const url = document.getElementById("modelUrl").value.trim();
+            await wllama.loadModelFromUrl(url, { progress_callback: progressCallback });
+          } else {
+            const fileInput = document.getElementById("modelFile").files[0];
+            if (!fileInput) {
+              alert("GGUF 파일을 선택해주세요.");
+              loadBtn.disabled = false;
+              return;
+            }
+            await wllama.loadModelFromFile(fileInput, { progress_callback: progressCallback });
+          }
+
+          status.innerText = "상태: 🟢 엔진 로드 완료! 모델 구동 준비가 완료되었습니다.";
+          status.style.color = "green";
+          runContainer.style.display = "block";
+        } catch (err) {
+          status.innerText = `상태: 🔴 로드 실패 - ${err.message}`;
+          status.style.color = "red";
+          loadBtn.disabled = false;
+        }
+      });
+
+      // =======================================================
+      // [파트 2] 로드된 가중치를 하드웨어 연산 장치로 밀어 넣는 실구동 제어부
+      // =======================================================
+      runBtn.addEventListener("click", async () => {
+        if (!wllama) return;
+
+        runBtn.disabled = true;
+        output.innerText = "모델 연산 장치 가동 중...";
+
+        const prompt = document.getElementById("promptInput").value;
+        // 일반적인 인스트럭트 모델 규격 포맷 빌드
+        const chatPrompt = `<|im_start|>user\n${prompt}<|im_end|>\n<|im_start|>assistant\n`;
+
+        try {
+          // 연산 엔진 가동 및 추론 시작 명령 전달
+          await wllama.createCompletion(chatPrompt, {
+            n_predict: 256,
+            sampling: { temp: 0.7, top_k: 40, top_p: 0.9 },
+            // 연산 장치에서 결과 토큰이 튀어나올 때마다 즉시 화면에 렌더링
+            onNewToken: (token, piece, currentText) => {
+              output.innerText = currentText;
+            },
+          });
+        } catch (err) {
+          output.innerText = `구동 에러 발생: ${err.message}`;
+        } finally {
+          runBtn.disabled = false;
+        }
+      });
     </script>
   </body>
 </html>
