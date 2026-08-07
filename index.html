@@ -11,9 +11,8 @@
     <link rel="apple-touch-icon" href="/icon.png" />
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
-         파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-
+    <!-- 🔑 env-config.js는 런타임에 generate-env-config.js가 생성 — Vite 번들 대상 아님.
+         없으면 localStorage → 입력폼 순서로 자동 진행됩니다. -->
     <!-- LocalForage -->
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
@@ -1275,113 +1274,26 @@
         min-height: 16px;
         margin: 4px 0 2px;
       }
+    
+/* GGUF INTEGRATION */
 
-      /* --- GGUF INTEGRATED STYLES --- */
-
-      body {
-        font-family: -apple-system, sans-serif;
-        max-width: 700px;
-        margin: 30px auto;
-        padding: 0 20px;
-        background: #f5f7fb;
-        color: #333;
-      }
-      .box {
-        background: white;
-        padding: 25px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        margin-bottom: 20px;
-      }
-      .group {
-        margin-bottom: 15px;
-      }
-      label {
-        display: block;
-        font-weight: bold;
-        margin-bottom: 6px;
-        font-size: 0.95em;
-      }
-      input[type="text"] {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #ced4da;
-        border-radius: 6px;
-        box-sizing: border-box;
-      }
-      .radio-group {
-        display: flex;
-        gap: 15px;
-        margin-bottom: 15px;
-        background: #eef2f7;
-        padding: 10px;
-        border-radius: 6px;
-      }
-      button {
-        background: #007bff;
-        color: white;
-        border: none;
-        padding: 12px 20px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: bold;
-        width: 100%;
-        font-size: 1em;
-      }
-      button:disabled {
-        background: #b8c2cc;
-        cursor: not-allowed;
-      }
-      #status {
-        font-weight: bold;
-        background: #e9ecef;
-        padding: 12px;
-        border-radius: 6px;
-        min-height: 20px;
-        word-break: break-all;
-        font-size: 0.9em;
-        line-height: 1.4;
-      }
-      #chatPanel {
-        display: none;
-      }
-      #chatLog {
-        border: 1px solid #e2e8f0;
-        height: 250px;
-        overflow-y: auto;
-        padding: 15px;
-        background: #f8fafc;
-        border-radius: 6px;
-        margin-bottom: 12px;
-        font-size: 0.95em;
-      }
-      .msg {
-        margin-bottom: 10px;
-        padding: 10px;
-        border-radius: 8px;
-        max-width: 85%;
-      }
-      .user {
-        background: #dbeafe;
-        margin-left: auto;
-        text-align: right;
-      }
-      .ai {
-        background: #f1f5f9;
-        margin-right: auto;
-      }
-
-      #gguf-integrated-view {
-        display: none;
-        padding: 20px;
-        background: #f5f7fb;
-        color: #333;
-        height: 100%;
-        overflow-y: auto;
-        z-index: 10;
-        position: relative;
-      }
-    </style>
+        body { font-family: -apple-system, sans-serif; max-width: 700px; margin: 30px auto; padding: 0 20px; background: #f5f7fb; color: #333; }
+        .box { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 6px; font-size: 0.95em; }
+        input[type="text"] { width: 100%; padding: 10px; border: 1px solid #ced4da; border-radius: 6px; box-sizing: border-box; }
+        .radio-group { display: flex; gap: 15px; margin-bottom: 15px; background: #eef2f7; padding: 10px; border-radius: 6px; }
+        button { background: #007bff; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 1em; }
+        button:disabled { background: #b8c2cc; cursor: not-allowed; }
+        #status { font-weight: bold; background: #e9ecef; padding: 12px; border-radius: 6px; min-height: 20px; word-break: break-all; font-size: 0.9em; line-height: 1.4; }
+        #chatPanel { display: none; }
+        #chatLog { border: 1px solid #e2e8f0; height: 250px; overflow-y: auto; padding: 15px; background: #f8fafc; border-radius: 6px; margin-bottom: 12px; font-size: 0.95em; }
+        .msg { margin-bottom: 10px; padding: 10px; border-radius: 8px; max-width: 85%; }
+        .user { background: #dbeafe; margin-left: auto; text-align: right; }
+        .ai { background: #f1f5f9; margin-right: auto; }
+    
+#gguf-view { display:none; padding: 20px; background: #f5f7fb; color: #333; height: 100%; overflow-y: auto; }
+</style>
   </head>
   <body>
     <div id="loading-screen"><div class="spinner"></div></div>
@@ -2675,7 +2587,7 @@
           <span style="display:flex;align-items:center;gap:10px;">${iconSvg("MessageSquare", 20)} AI Chat</span>
         </div>
         <div class="header-right">
-    <button id="btn-gguf-settings" class="browser-toggle-btn" title="로컬 엔진 설정" onclick="openGGUFView()">
+    <button id="btn-gguf-toggle" class="browser-toggle-btn" title="로컬 모델 설정" onclick="openGGUF()">
         <i class="fas fa-microchip"></i>
     </button>
     
@@ -2711,53 +2623,19 @@
         }
       </div>
       
-    <div id="gguf-integrated-view">
-        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-            <h2 style="margin:0; color:#333; font-size: 1.2rem;">GGUF 로컬 엔진 제어판</h2>
-            <button onclick="closeGGUFView()" style="padding: 8px 16px; background: #ef4444; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">대화창으로 돌아가기</button>
+    <div id="gguf-view">
+        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin:0; color:#333;">로컬 GGUF 모델 엔진</h2>
+            <button onclick="closeGGUF()" style="padding: 8px 16px; background: #666; color: white; border: none; border-radius: 6px; cursor: pointer;">대화로 돌아가기</button>
         </div>
-        <h2>범용 GGUF 모델 웹 구동기 (WASM/CPU/GPU 자동 연동)</h2>
-
-    <!-- 1. 모델 로드 제어부 -->
-    <div class="box">
+        <div class="box">
         <div class="radio-group">
             <label style="display:inline;"><input type="radio" id="modeUrl" name="loadMode" value="url" checked> 외부 URL 직접 입력</label>
             <label style="display:inline;"><input type="radio" id="modeFile" name="loadMode" value="file"> 로컬 .gguf 파일 선택</label>
         </div>
-
-        <!-- URL 주소 입력 -->
-        <div id="urlArea" class="group">
-            <label for="urlInput">GGUF 다운로드 URL 주소:</label>
-            <input type="text" id="urlInput" value="https://huggingface.co">
-            <p style="font-size:0.8em; color:#666; margin-top:5px;">※ 브라우저 테스트에 최적화된 초경량 Qwen 0.5B 주소입니다. (약 600MB 다운로드 필요)</p>
-        </div>
-
-        <!-- 로컬 파일 선택 -->
-        <div id="fileArea" class="group" style="display: none;">
-            <label for="fileInput">PC에 있는 단일 GGUF 파일 선택:</label>
-            <input type="file" id="fileInput" accept=".gguf">
-        </div>
-
-        <button id="loadBtn">모델 엔진 로드 및 실행</button>
-    </div>
-
-    <!-- 상태 출력창 -->
-    <div class="box">
+<div class="box">
         <label>엔진 및 로딩 상태:</label>
         <div id="status">파일 또는 주소를 선택한 뒤 위 버튼을 눌러주세요.</div>
-    </div>
-
-    <!-- 2. 채팅 구동부 (로드 완료 후 활성화) -->
-    <div class="box" id="chatPanel">
-        <label>AI 추론 채팅 테스트</label>
-        <div id="chatLog"></div>
-        <div style="display: flex; gap: 8px;">
-            <input type="text" id="userInput" placeholder="메시지를 입력해 보세요..." style="flex:1;">
-            <button id="sendBtn" style="width: 80px; padding:0;">전송</button>
-        </div>
-    </div>
-
-    <!-- 범용 GGUF 파싱 엔진 라이브러리 모듈 주입 -->
     </div>
     
 <div id="messages-area">
@@ -3568,234 +3446,215 @@
         });
       }
     </script>
-
+  
     <script>
-      // Global state exposure and control functions
-      window.openGGUFView = function () {
-        document.getElementById("gguf-integrated-view").style.display = "block";
-        document.getElementById("messages-area").style.display = "none";
-        if (document.getElementById("empty-state")) document.getElementById("empty-state").style.display = "none";
-      };
-      window.closeGGUFView = function () {
-        document.getElementById("gguf-integrated-view").style.display = "none";
-        const S = typeof window.getState === "function" ? window.getState() : typeof S !== "undefined" ? S : null;
-        if (S && S.messages && S.messages.length > 0) {
-          document.getElementById("messages-area").style.display = "block";
-        } else if (document.getElementById("empty-state")) {
-          document.getElementById("empty-state").style.display = "flex";
+        // Expose internal functions to window for the module to use
+        (function() {
+            const check = setInterval(() => {
+                if (typeof setState !== 'undefined' && typeof S !== 'undefined') {
+                    window.getState = () => S;
+                    window.setState = setState;
+                    window.sendMessage = sendMessage;
+                    clearInterval(check);
+                }
+            }, 100);
+        })();
+        
+        function openGGUF() {
+            document.getElementById('gguf-view').style.display = 'block';
+            document.getElementById('messages-area').style.display = 'none';
+            document.getElementById('empty-state').style.display = 'none';
         }
-      };
-      window.switchToLocalGGUF = function () {
-        if (typeof setState === "function") {
-          setState({
-            currentGPT: { id: "local-gguf", name: "Local GGUF Model" },
-            currentConvId: "local-session-" + Date.now(),
-            messages: [],
-          });
-        }
-        window.openGGUFView();
-      };
-
-      // Expose internal state to window for the module script
-      (function () {
-        const check = setInterval(() => {
-          if (typeof setState === "function" && typeof S !== "undefined") {
-            window.getState = () => S;
-            window.setState = setState;
-            window.sendMessage = sendMessage;
-            clearInterval(check);
-          }
-        }, 100);
-      })();
-    </script>
-
-    <script type="module">
-      import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/index.js";
-
-      // 브라우저 런타임 호환성 에셋 바인딩 필수 주소 지정
-      const wllamaConfig = {
-        "background-worker": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
-        "wasm-sg": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
-        "wasm-mt": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
-        "wasm-sg-simd": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
-        "wasm-mt-simd": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
-      };
-
-      const modeUrl = document.getElementById("modeUrl");
-      const modeFile = document.getElementById("modeFile");
-      const urlArea = document.getElementById("urlArea");
-      const fileArea = document.getElementById("fileArea");
-      const loadBtn = document.getElementById("loadBtn");
-      const status = document.getElementById("status");
-
-      const chatPanel = document.getElementById("chatPanel");
-      const chatLog = document.getElementById("chatLog");
-      const userInput = document.getElementById("userInput");
-      const sendBtn = document.getElementById("sendBtn");
-
-      let wllamaInstance = null;
-
-      // UI 전환 토글 로직
-      modeUrl.addEventListener("change", () => {
-        urlArea.style.display = "block";
-        fileArea.style.display = "none";
-      });
-      modeFile.addEventListener("change", () => {
-        urlArea.style.display = "none";
-        fileArea.style.display = "block";
-      });
-
-      // 엔진 초기화 및 파일 바이트 스트림 로드 기능
-      loadBtn.addEventListener("click", async () => {
-        loadBtn.disabled = true;
-        status.innerText = "사용자 환경 인프라 검색 및 가속 하드웨어 연동 준비 중...";
-
-        try {
-          // 1. 하드웨어 스펙 자동 탐지 기반 인스턴스 생성
-          wllamaInstance = new Wllama(wllamaConfig);
-
-          // 진행 상태 디스플레이 콜백
-          const onProgress = ({ loaded, total }) => {
-            if (total > 0) {
-              status.innerText = `가중치 데이터 로드 중: ${Math.round((loaded / total) * 100)}% 완료 (${Math.round(loaded / 1024 / 1024)}MB / ${Math.round(total / 1024 / 1024)}MB)`;
-            }
-          };
-
-          // 2. 선택 방식에 따른 메모리 다이렉트 주입 파싱
-          if (modeUrl.checked) {
-            const url = document.getElementById("urlInput").value.trim();
-            status.innerText = "원격 서버에서 파일 스트림 연결 중...";
-            await wllamaInstance.loadModelFromUrl(url, { progress_callback: onProgress });
-          } else {
-            const fileInput = document.getElementById("fileInput").files[0];
-            if (!fileInput) {
-              alert("GGUF 파일을 먼저 업로드해 주세요.");
-              loadBtn.disabled = false;
-              status.innerText = "대기 중...";
-              return;
-            }
-            status.innerText = "로컬 파일 디스크 바이너리 해석 중...";
-            await wllamaInstance.loadModelFromFile(fileInput, { progress_callback: onProgress });
-          }
-
-          status.innerHTML =
-            "🟢 <strong>완벽 성공!</strong> 브라우저 환경에 구애받지 않는 독립 실행형 GGUF 가속 엔진이 빌드되었습니다.";
-          chatPanel.style.display = "block";
-        } catch (err) {
-          console.error(err);
-          status.innerHTML = `🔴 <strong>구동 실패:</strong> ${err.message}`;
-          loadBtn.disabled = false;
-        }
-      });
-
-      // 실제 채팅 추론 테스트 제어 핸들러
-      async function runLocalGGUFInference() {
-        const prompt = userInput.value.trim();
-        if (!prompt || !wllamaInstance) return;
-
-        // 유저 UI 처리
-        appendLog(prompt, "user");
-        userInput.value = "";
-        sendBtn.disabled = true;
-
-        const aiBubble = appendLog("모델이 로컬 연산 중입니다...", "ai");
-
-        try {
-          // 프롬프트 기반 텍스트 생성 추론 연산 구동
-          const output = await wllamaInstance.createCompletion(
-            `<|im_start|>user\n${prompt}<|im_end|>\n<|im_start| context>\n`,
-            {
-              n_predict: 100,
-              sampling: { temp: 0.6, top_k: 40 },
-            },
-          );
-
-          aiBubble.innerText = output.trim();
-        } catch (e) {
-          aiBubble.innerText = `추론 실패: ${e.message}`;
-        } finally {
-          sendBtn.disabled = false;
-        }
-      }
-
-      function appendLog(text, sender) {
-        const div = document.createElement("div");
-        div.className = `msg ${sender}`;
-        div.innerText = text;
-        chatLog.appendChild(div);
-        chatLog.scrollTop = chatLog.scrollHeight;
-        return div;
-      }
-
-      sendBtn.addEventListener("click", runLocalGGUFInference);
-      userInput.addEventListener("keypress", (e) => {
-        if (e.key === "Enter") runLocalGGUFInference();
-      });
-
-      // Hook into the main app's sendMessage function
-      const hookInterval = setInterval(() => {
-        if (window.sendMessage) {
-          const originalSendMessage = window.sendMessage;
-          window.sendMessage = async function (content, files) {
+        function closeGGUF() {
+            document.getElementById('gguf-view').style.display = 'none';
             const S = window.getState();
-            // Check if current GPT is the local GGUF
-            if (typeof wllamaInstance !== "undefined" && wllamaInstance && S.currentGPT?.id === "local-gguf") {
-              // 1. Add User Message to UI
-              const userMsg = {
-                id: "local-msg-" + Date.now(),
-                role: "user",
-                content: content,
-                created_at: new Date().toISOString(),
-              };
-              window.setState({
-                messages: [...S.messages, userMsg],
-                isStreaming: true,
-                streamingMsg: "로컬 모델 연산 중...",
-              });
-
-              try {
-                // 2. Run Inference using Wllama
-                // We use the prompt format expected by most GGUF models (ChatML-like)
-                const output = await wllamaInstance.createCompletion(
-                  `<|im_start|>user\n${content}<|im_end|>\n<|im_start|>assistant\n`,
-                  {
-                    n_predict: 1000,
-                    sampling: { temp: 0.7, top_k: 40, top_p: 0.9 },
-                  },
-                );
-
-                // 3. Add AI Response to UI
-                const aiMsg = {
-                  id: "ai-msg-" + Date.now(),
-                  role: "assistant",
-                  content: output.trim(),
-                  created_at: new Date().toISOString(),
-                };
-                window.setState({
-                  messages: [...window.getState().messages, aiMsg],
-                  isStreaming: false,
-                  streamingMsg: "",
-                });
-              } catch (e) {
-                console.error("Local Inference Error:", e);
-                window.setState({
-                  isStreaming: false,
-                  streamingMsg: "에러 발생: " + e.message,
-                });
-              }
+            if (S.messages.length > 0) {
+                document.getElementById('messages-area').style.display = 'block';
             } else {
-              // Fallback to original cloud-based sendMessage
-              return originalSendMessage(content, files);
+                document.getElementById('empty-state').style.display = 'flex';
             }
-          };
-          clearInterval(hookInterval);
         }
-      }, 200);
-
-      // Ensure wllamaInstance is globally accessible
-      setInterval(() => {
-        if (typeof wllamaInstance !== "undefined") window.wllamaInstance = wllamaInstance;
-      }, 500);
+        function selectLocalGGUF() {
+            window.setState({ 
+                currentGPT: { id: 'local-gguf', name: 'Local GGUF' },
+                currentConvId: 'local-session',
+                messages: []
+            });
+            openGGUF();
+        }
     </script>
-  </body>
+    
+<script type="module">
+    
+        import { Wllama } from "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/index.js";
+
+        // 브라우저 런타임 호환성 에셋 바인딩 필수 주소 지정
+        const wllamaConfig = {
+            "background-worker": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
+            "wasm-sg": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
+            "wasm-mt": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
+            "wasm-sg-simd": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
+            "wasm-mt-simd": "https://cdn.jsdelivr.net/npm/@wllama/wllama@0.2.2/dist/",
+        };
+
+        const modeUrl = document.getElementById('modeUrl');
+        const modeFile = document.getElementById('modeFile');
+        const urlArea = document.getElementById('urlArea');
+        const fileArea = document.getElementById('fileArea');
+        const loadBtn = document.getElementById('loadBtn');
+        const status = document.getElementById('status');
+        
+        const chatPanel = document.getElementById('chatPanel');
+        const chatLog = document.getElementById('chatLog');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+
+        let wllamaInstance = null;
+
+        // UI 전환 토글 로직
+        modeUrl.addEventListener('change', () => { urlArea.style.display = 'block'; fileArea.style.display = 'none'; });
+        modeFile.addEventListener('change', () => { urlArea.style.display = 'none'; fileArea.style.display = 'block'; });
+
+        // 엔진 초기화 및 파일 바이트 스트림 로드 기능
+        loadBtn.addEventListener('click', async () => {
+            loadBtn.disabled = true;
+            status.innerText = "사용자 환경 인프라 검색 및 가속 하드웨어 연동 준비 중...";
+
+            try {
+                // 1. 하드웨어 스펙 자동 탐지 기반 인스턴스 생성
+                wllamaInstance = new Wllama(wllamaConfig);
+
+                // 진행 상태 디스플레이 콜백
+                const onProgress = ({ loaded, total }) => {
+                    if (total > 0) {
+                        status.innerText = `가중치 데이터 로드 중: ${Math.round((loaded / total) * 100)}% 완료 (${Math.round(loaded/1024/1024)}MB / ${Math.round(total/1024/1024)}MB)`;
+                    }
+                };
+
+                // 2. 선택 방식에 따른 메모리 다이렉트 주입 파싱
+                if (modeUrl.checked) {
+                    const url = document.getElementById('urlInput').value.trim();
+                    status.innerText = "원격 서버에서 파일 스트림 연결 중...";
+                    await wllamaInstance.loadModelFromUrl(url, { progress_callback: onProgress });
+                } else {
+                    const fileInput = document.getElementById('fileInput').files[0];
+                    if (!fileInput) {
+                        alert("GGUF 파일을 먼저 업로드해 주세요.");
+                        loadBtn.disabled = false;
+                        status.innerText = "대기 중...";
+                        return;
+                    }
+                    status.innerText = "로컬 파일 디스크 바이너리 해석 중...";
+                    await wllamaInstance.loadModelFromFile(fileInput, { progress_callback: onProgress });
+                }
+
+                status.innerHTML = "🟢 <strong>완벽 성공!</strong> 브라우저 환경에 구애받지 않는 독립 실행형 GGUF 가속 엔진이 빌드되었습니다.";
+                chatPanel.style.display = "block";
+
+            } catch (err) {
+                console.error(err);
+                status.innerHTML = `🔴 <strong>구동 실패:</strong> ${err.message}`;
+                loadBtn.disabled = false;
+            }
+        });
+
+        // 실제 채팅 추론 테스트 제어 핸들러
+        async function runLocalInference() {
+            const prompt = userInput.value.trim();
+            if (!prompt || !wllamaInstance) return;
+
+            // 유저 UI 처리
+            appendLog(prompt, 'user');
+            userInput.value = '';
+            sendBtn.disabled = true;
+
+            const aiBubble = appendLog('모델이 로컬 연산 중입니다...', 'ai');
+
+            try {
+                // 프롬프트 기반 텍스트 생성 추론 연산 구동
+                const output = await wllamaInstance.createCompletion(
+                    `<|im_start|>user\n${prompt}<|im_end|>\n<|im_start| context>\n`, 
+                    {
+                        n_predict: 100,
+                        sampling: { temp: 0.6, top_k: 40 }
+                    }
+                );
+                
+                aiBubble.innerText = output.trim();
+            } catch (e) {
+                aiBubble.innerText = `추론 실패: ${e.message}`;
+            } finally {
+                sendBtn.disabled = false;
+            }
+        }
+
+        function appendLog(text, sender) {
+            const div = document.createElement('div');
+            div.className = `msg ${sender}`;
+            div.innerText = text;
+            chatLog.appendChild(div);
+            chatLog.scrollTop = chatLog.scrollHeight;
+            return div;
+        }
+
+        sendBtn.addEventListener('click', runLocalInference);
+        userInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') runLocalInference(); });
+    
+    
+    // Override sendMessage to handle local GGUF
+    const checkReady = setInterval(() => {
+        if (window.sendMessage) {
+            const originalSendMessage = window.sendMessage;
+            window.sendMessage = async function(content, files) {
+                const S = window.getState();
+                if (wllamaInstance && S.currentGPT?.id === 'local-gguf') {
+                    // User Message UI
+                    const userMsg = {
+                        id: 'local-' + Date.now(),
+                        role: 'user',
+                        content: content,
+                        created_at: new Date().toISOString()
+                    };
+                    window.setState({ 
+                        messages: [...S.messages, userMsg],
+                        isStreaming: true,
+                        streamingMsg: "로컬 모델 연산 중..."
+                    });
+                    
+                    try {
+                        const output = await wllamaInstance.createCompletion(
+                            `<|im_start|>user\n${content}<|im_end|>\n<|im_start|>assistant\n`,
+                            { n_predict: 500, sampling: { temp: 0.7 } }
+                        );
+                        
+                        const aiMsg = {
+                            id: 'ai-' + Date.now(),
+                            role: 'assistant',
+                            content: output.trim(),
+                            created_at: new Date().toISOString()
+                        };
+                        window.setState({ 
+                            messages: [...window.getState().messages, aiMsg],
+                            isStreaming: false,
+                            streamingMsg: ""
+                        });
+                    } catch (e) {
+                        console.error(e);
+                        window.setState({ isStreaming: false, streamingMsg: "로컬 추론 실패: " + e.message });
+                    }
+                } else {
+                    return originalSendMessage(content, files);
+                }
+            };
+            clearInterval(checkReady);
+        }
+    }, 200);
+    
+    // Link Wllama instance to window for visibility
+    setInterval(() => {
+        if (typeof wllamaInstance !== 'undefined') window.wllamaInstance = wllamaInstance;
+    }, 500);
+</script>
+
+</body>
 </html>
