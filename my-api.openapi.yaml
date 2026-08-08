@@ -1,0 +1,56 @@
+openapi: 3.1.0
+info:
+  title: My API
+  version: 1.3.5
+  description: Generated with Instant Docs — paste a cURL command, get OpenAPI documentation.
+servers:
+  - url: https://api.apinotes.io
+tags:
+  - name: upload
+paths:
+  /api/v1/upload/projects/{projectId}/spec:
+    put:
+      operationId: putApiV1UploadProjectsByProjectIdSpec
+      summary: Update upload projects by project id spec
+      tags:
+        - upload
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^[0-9a-f]{24}$
+            example: 6a76d571074471e4f2f905cb
+      requestBody:
+        required: true
+        content:
+          text/yaml:
+            schema:
+              type: string
+            example: '@openapi.json'
+      responses:
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: Invalid or revoked API key.
+              example:
+                success: false
+                message: Invalid or revoked API key.
+      security:
+        - apiKeyXAPIKey: []
+components:
+  securitySchemes:
+    apiKeyXAPIKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
