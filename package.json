@@ -11,6 +11,23 @@
     "preview": "vite preview"
   },
   "dependencies": {
+       "@scelar/nodepod": "^1.9.12",
+    "@supabase/server": "^1.4.1",
+    "almostnode": "^0.2.14",
+    "axios": "^1.19.0",
+    "capsolver": "^1.0.1",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "git": "^0.1.5",
+    "google-search-ts": "^1.0.1",
+    "googlethis": "^1.8.0",
+    "open": "^11.0.0",
+    "puppeteer": "^25.4.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-recaptcha": "^3.6.8",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^3.9.0",
     "@radix-ui/react-accordion": "^1.2.0",
