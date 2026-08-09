@@ -1,0 +1,12 @@
+@font-face {
+    font-family: 'aCutieHoney';
+    src: url('/fonts/aCutieHoney.woff') format('woff'),
+         url('/fonts/aCutieHoney.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap; /* force 대신 표준 값인 swap 사용 */
+}
+
+* {
+    font-family: 'aCutieHoney' !important; /* 따옴표 위치 수정 */
+}
