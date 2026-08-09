@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 인증 확인 (OpenRouter 무료 모델은 키가 없어도 되거나 특정 헤더가 필요할 수 있음)
+    // 인증 확인
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '') || '';
     const isGuest = token === 'guest-token' || token.startsWith('guest-');
@@ -37,9 +37,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // OpenRouter 설정 (무료 무검열 모델 사용)
+    // OpenRouter 설정 (무료 모델 라우터 또는 안정적인 무료 무검열 모델 사용)
     const baseUrl = "https://openrouter.ai/api/v1";
-    // 환경 변수에서 키를 가져오되, 없으면 빈 문자열(무료 모델용) 사용
+    // 사용자가 입력한 API 키가 있거나 환경 변수에 있는 경우 사용, 없으면 빈 문자열 또는 공용 무료 키 허용
     const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "";
 
     // 시스템 프롬프트 구성
@@ -80,23 +80,18 @@ Deno.serve(async (req) => {
           (f: any) => f.type === 'text' && f.textContent
         );
 
-        // 텍스트 파트 (lastUserContent 우선, 없으면 현재 content)
         let textPart: string =
           lastUserContent !== undefined ? lastUserContent : (lastMsg.content || '');
 
-        // 텍스트 파일 내용 추가
         for (const tf of textFiles) {
           textPart += `\n\n[첨부 파일: ${tf.name}]\n${tf.textContent.substring(0, 8000)}`;
         }
 
         if (images.length > 0) {
-          // 멀티모달 배열 구성
           const contentArray: any[] = [];
-
           if (textPart.trim()) {
             contentArray.push({ type: 'text', text: textPart });
           }
-
           for (const img of images) {
             contentArray.push({
               type: 'image_url',
@@ -106,16 +101,12 @@ Deno.serve(async (req) => {
               },
             });
           }
-
           finalMessages[lastIdx] = { ...lastMsg, content: contentArray };
-          console.log(`Multimodal: ${images.length} image(s) + text`);
         } else if (textPart !== lastMsg.content) {
-          // 이미지 없고 텍스트 파일만 있는 경우
           finalMessages[lastIdx] = { ...lastMsg, content: textPart };
         }
       }
     } else if (lastUserContent !== undefined && finalMessages.length > 0) {
-      // chatAttachments 없어도 lastUserContent로 마지막 메시지 텍스트 교체
       const lastIdx = finalMessages.length - 1;
       const lastMsg = finalMessages[lastIdx];
       if (lastMsg?.role === 'user' && lastUserContent !== lastMsg.content) {
@@ -128,13 +119,15 @@ Deno.serve(async (req) => {
       ...finalMessages,
     ];
 
+    // 사용할 모델 후보군 (프리셋 모델이 실패할 경우를 대비해 널리 쓰이는 OpenRouter 무료 모델 지정 가능)
+    // openrouter/free는 자동으로 사용 가능한 무료 모델을 라우팅해줍니다.
+    const targetModel = "openrouter/free"; 
+
     console.log('Chat request (OpenRouter):', {
-      model: '@preset/gpt-oss-20b-free-uncensored',
+      model: targetModel,
       messageCount: chatMessages.length,
-      isGuest,
     });
 
-    // AI API 호출 (OpenRouter)
     let response: Response;
     try {
       response = await fetch(`${baseUrl}/chat/completions`, {
@@ -142,31 +135,34 @@ Deno.serve(async (req) => {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://github.com/heyPuter/puter', // OpenRouter 랭킹을 위한 권장 헤더
-          'X-Title': 'Puter AI Proxy',
+          'HTTP-Referer': 'https://openrouter.ai',
+          'X-Title': 'Free Uncensored Client',
         },
         body: JSON.stringify({
-          model: '@preset/gpt-oss-20b-free-uncensored',
+          model: targetModel,
           messages: chatMessages,
           stream: true,
-          // max_tokens는 모델 사양에 맞춰 적절히 조절 (OpenRouter 무료 모델은 제한이 있을 수 있음)
-          max_tokens: 4096, 
+          max_tokens: 4096,
           temperature: 0.8,
         }),
       });
     } catch (fetchError: any) {
       console.error('Fetch error:', fetchError);
       return new Response(
-        JSON.stringify({ error: '네트워크 오류가 발생했습니다.', details: fetchError.message }),
+        JSON.stringify({ error: '네트워크 연결 오류가 발생했습니다.', details: fetchError.message }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+      console.error('OpenRouter API error status:', response.status, 'body:', errorText);
       return new Response(
-        JSON.stringify({ error: 'AI 서비스 응답 오류', details: errorText }),
+        JSON.stringify({ 
+          error: 'AI 서비스 응답 오류 (OpenRouter)', 
+          status: response.status, 
+          details: errorText 
+        }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -177,8 +173,6 @@ Deno.serve(async (req) => {
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    console.log('Streaming response started');
 
     // SSE 스트림 반환
     const stream = new ReadableStream({
@@ -213,7 +207,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('Chat stream error:', error);
     return new Response(
-      JSON.stringify({ error: error?.message || '서버 오류가 발생했습니다' }),
+      JSON.stringify({ error: error?.message || '서버 내부 오류가 발생했습니다' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
