@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     
     // OpenRouter 무료 모델은 키가 없어도 되지만, 헤더 형식을 맞추기 위해 빈 값이라도 전달합니다.
     // 만약 개인 OpenRouter 키가 있다면 OnSpace 프로젝트 설정에서 OPENROUTER_API_KEY를 추가하면 적용됩니다.
-    const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "sk-or-v1-0000000000000000000000000000000000000000000000000000000000000000";
+    const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "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";
 
     // 시스템 프롬프트 구성
     let finalSystemPrompt = systemPrompt?.trim() || BASE_SYSTEM_PROMPT;
