@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // 인증 확인 (OpenRouter 무료 모델은 키가 없어도 되거나 특정 헤더가 필요할 수 있음)
+    // 인증 확인 (게스트도 허용)
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '') || '';
     const isGuest = token === 'guest-token' || token.startsWith('guest-');
@@ -37,10 +37,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // OpenRouter 설정 (무료 무검열 모델 사용)
-    const baseUrl = "https://openrouter.ai/api/v1";
-    // 환경 변수에서 키를 가져오되, 없으면 빈 문자열(무료 모델용) 사용
-    const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "";
+    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
+    const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
+
+    if (!baseUrl || !apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'AI 서비스 설정이 누락되었습니다. 관리자에게 문의하세요.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // 시스템 프롬프트 구성
     let finalSystemPrompt = systemPrompt?.trim() || BASE_SYSTEM_PROMPT;
@@ -128,45 +133,66 @@ Deno.serve(async (req) => {
       ...finalMessages,
     ];
 
-    console.log('Chat request (OpenRouter):', {
-      model: '@preset/gpt-oss-20b-free-uncensored',
+    console.log('Chat request:', {
       messageCount: chatMessages.length,
+      systemPromptLength: finalSystemPrompt.length,
+      gptFileCount: gptFiles?.length || 0,
+      attachmentCount: chatAttachments?.length || 0,
       isGuest,
     });
 
-    // AI API 호출 (OpenRouter)
+    // AI API 호출
     let response: Response;
     try {
       response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://github.com/heyPuter/puter', // OpenRouter 랭킹을 위한 권장 헤더
-          'X-Title': 'Puter AI Proxy',
         },
         body: JSON.stringify({
-          model: '@preset/gpt-oss-20b-free-uncensored',
+          model: 'openai/gpt-3.5-turbo',
           messages: chatMessages,
           stream: true,
-          // max_tokens는 모델 사양에 맞춰 적절히 조절 (OpenRouter 무료 모델은 제한이 있을 수 있음)
-          max_tokens: 4096, 
+          max_tokens: 100000,
           temperature: 0.8,
         }),
       });
     } catch (fetchError: any) {
       console.error('Fetch error:', fetchError);
       return new Response(
-        JSON.stringify({ error: '네트워크 오류가 발생했습니다.', details: fetchError.message }),
+        JSON.stringify({ error: '네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.', details: fetchError.message }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenRouter API error:', response.status, errorText);
+      let errorMessage = 'AI 서비스 오류';
+      try {
+        const errorText = await response.text();
+        console.error('AI API error:', response.status, errorText);
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorJson.message || errorMessage;
+        } catch {
+          errorMessage = errorText.substring(0, 200) || errorMessage;
+        }
+      } catch { /* ignore */ }
+
+      const statusMessages: Record<number, string> = {
+        400: '잘못된 요청입니다. 메시지를 다시 확인해주세요.',
+        401: 'AI 서비스 인증 오류. 관리자에게 문의하세요.',
+        402: 'AI 서비스 크레딧이 부족합니다. 관리자에게 문의하세요.',
+        429: '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
+        500: 'AI 서비스에 일시적 문제가 발생했습니다.',
+      };
+
+      const userMessage =
+        statusMessages[response.status] ||
+        (response.status >= 500 ? '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' : '메시지 전송 중 문제가 발생했습니다.');
+
       return new Response(
-        JSON.stringify({ error: 'AI 서비스 응답 오류', details: errorText }),
+        JSON.stringify({ error: userMessage, details: errorMessage, status: response.status }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
