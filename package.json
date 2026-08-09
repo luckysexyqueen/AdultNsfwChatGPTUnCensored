@@ -9,7 +9,12 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview"
-  },
+     "  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "build": "echo \"No build step required\""
+    },
   "dependencies": {
        "@scelar/nodepod": "^1.9.12",
     "@supabase/server": "^1.4.1",
