@@ -27,14 +27,17 @@ Deno.serve(async (req) => {
       });
     }
 
+    // --- OpenRouter 설정 ---
     const baseUrl = "https://openrouter.ai/api/v1";
-    const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "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";
+    // 키가 없으면 빈 문자열을 사용합니다 (무료 모델은 키 없이도 제한적으로 작동하거나 특정 헤더로 가능)
+    const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "";
 
     let finalSystemPrompt = systemPrompt?.trim() || BASE_SYSTEM_PROMPT;
     if (instructions?.trim()) {
       finalSystemPrompt += `\n\n추가 지침:\n${instructions.trim()}`;
     }
 
+    // 파일 컨텍스트 추가
     if (gptFiles && gptFiles.length > 0) {
       const fileContents = gptFiles.slice(0, 10).filter((f: any) => f.file_content)
         .map((f: any) => `=== ${f.file_name} ===\n${f.file_content.substring(0, 5000)}`)
@@ -42,17 +45,14 @@ Deno.serve(async (req) => {
       if (fileContents) finalSystemPrompt += `\n\n📁 참고 자료:\n${fileContents}`;
     }
 
+    // 메시지 구성
     let finalMessages = [...messages];
     if (chatAttachments && Array.isArray(chatAttachments) && chatAttachments.length > 0) {
       const lastIdx = finalMessages.length - 1;
       const lastMsg = finalMessages[lastIdx];
       if (lastMsg && lastMsg.role === 'user') {
         const images = chatAttachments.filter((f: any) => f.type === 'image' && (f.url || f.base64));
-        const textFiles = chatAttachments.filter((f: any) => f.type === 'text' && f.textContent);
         let textPart: string = lastUserContent !== undefined ? lastUserContent : (lastMsg.content || '');
-        for (const tf of textFiles) {
-          textPart += `\n\n[첨부 파일: ${tf.name}]\n${tf.textContent.substring(0, 8000)}`;
-        }
         if (images.length > 0) {
           const contentArray: any[] = [{ type: 'text', text: textPart }];
           for (const img of images) {
@@ -66,9 +66,13 @@ Deno.serve(async (req) => {
     }
 
     const chatMessages = [{ role: 'system', content: finalSystemPrompt }, ...finalMessages];
-    const targetModel = "@preset/gpt-oss-20b-free-uncensored";
+    
+    // 모델 후보군: @preset 모델이 안될 경우를 대비해 가장 안정적인 무료 모델 사용
+    // 1. "meta-llama/llama-3.1-8b-instruct:free" (매우 안정적)
+    // 2. "openrouter/free" (자동 선택)
+    const targetModel = "meta-llama/llama-3.1-8b-instruct:free";
 
-    console.log(`OnSpace Streaming: Requesting ${targetModel}`);
+    console.log(`Requesting model: ${targetModel}`);
 
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
@@ -76,7 +80,7 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://onspace.ai',
-        'X-Title': 'OnSpace Free AI',
+        'X-Title': 'OnSpace Free AI Chat',
       },
       body: JSON.stringify({
         model: targetModel,
@@ -87,43 +91,43 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      return new Response(JSON.stringify({ error: 'AI API 오류', details: errorText }), { 
+      console.error('OpenRouter Error:', response.status, errorText);
+      
+      // 만약 첫 번째 모델이 실패하면 openrouter/free로 한 번 더 시도
+      if (response.status === 404 || response.status === 400) {
+        const retryResponse = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://onspace.ai',
+          },
+          body: JSON.stringify({
+            model: "openrouter/free",
+            messages: chatMessages,
+            stream: true,
+          }),
+        });
+        if (retryResponse.ok) return new Response(retryResponse.body, { headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' } });
+      }
+
+      return new Response(JSON.stringify({ 
+        error: 'AI API 오류가 발생했습니다.', 
+        details: errorText,
+        status: response.status 
+      }), { 
         status: response.status, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
 
-    // 스트리밍 데이터가 중간에 끊기지 않도록 ReadableStream을 수동으로 제어합니다.
-    const stream = new ReadableStream({
-      async start(controller) {
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-        const encoder = new TextEncoder();
-
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            // 데이터를 디코딩한 후 다시 인코딩하여 즉시 전송
-            const chunk = decoder.decode(value, { stream: true });
-            controller.enqueue(encoder.encode(chunk));
-          }
-        } catch (e) {
-          console.error('Stream processing error:', e);
-        } finally {
-          controller.close();
-        }
-      },
-    });
-
-    return new Response(stream, {
+    return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no', // 버퍼링 방지 (중요)
+        'X-Accel-Buffering': 'no',
       },
     });
 
