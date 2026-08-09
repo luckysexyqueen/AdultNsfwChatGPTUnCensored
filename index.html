@@ -13,7 +13,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
          파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-    <script src="/env-config.js" onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"></script>
+    <script
+      src="/env-config.js"
+      onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
+    ></script>
     <!-- LocalForage -->
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
@@ -172,7 +175,7 @@
       }
 
       /* ===== SCROLLBAR ===== */
-    ::-webkit-scrollbar {
+      ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
       }
@@ -241,7 +244,9 @@
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        transition: background 0.15s, border-color 0.15s;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
       }
       .sidebar-toggle-btn:hover {
         background: var(--bg4);
@@ -473,7 +478,9 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.15s, border-color 0.15s;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
       }
       .browser-toggle-btn:hover {
         background: var(--bg4);
@@ -1281,20 +1288,38 @@
     <div id="brow">
       <div id="brow-content">
         <div id="brow-tb">
-          <button id="brow-back" class="input-box-btn" style="border-radius:7px;min-height:34px;color:#fff;">
-            <i class="fa-solid fa-xmark"></i>&nbsp;닫기
+          <button id="brow-back" class="input-box-btn" style="border-radius: 7px; min-height: 34px; color: #fff">
+            <i class="fa-solid fa-xmark"></i>
+            &nbsp;닫기
           </button>
           <div id="brow-url">
-            <i class="fa-solid fa-lock" style="color:#4ade80;margin-right:4px;"></i>GoldFireDragonBrowser
+            <i class="fa-solid fa-lock" style="color: #4ade80; margin-right: 4px"></i>
+            GoldFireDragonBrowser
           </div>
-          <button id="brow-reload" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새로고침">
+          <button
+            id="brow-reload"
+            class="input-box-btn"
+            style="width: 32px; height: 32px; color: #fff"
+            title="새로고침"
+          >
             <i class="fa-solid fa-rotate-right"></i>
           </button>
-          <button id="brow-newtab" class="input-box-btn" style="width:32px;height:32px;color:#fff;" title="새 탭에서 열기">
+          <button
+            id="brow-newtab"
+            class="input-box-btn"
+            style="width: 32px; height: 32px; color: #fff"
+            title="새 탭에서 열기"
+          >
             <i class="fa-solid fa-arrow-up-right-from-square"></i>
           </button>
         </div>
-        <iframe id="brow-iframe" src="about:blank" title="브라우저" allowfullscreen style="flex:1;width:100%;border:none;"></iframe>
+        <iframe
+          id="brow-iframe"
+          src="about:blank"
+          title="브라우저"
+          allowfullscreen=""
+          style="flex: 1; width: 100%; border: none"
+        ></iframe>
       </div>
       <div id="brow-resize" title="드래그하여 크기 조절"></div>
     </div>
@@ -1829,11 +1854,7 @@
         if (!uid) return;
         try {
           const { data, error } = await withTimeout(
-            sb
-              .from("conversations")
-              .select("*")
-              .eq("user_id", uid)
-              .order("updated_at", { ascending: false }),
+            sb.from("conversations").select("*").eq("user_id", uid).order("updated_at", { ascending: false }),
             8000,
             { data: null, error: new Error("timeout") },
           );
@@ -2192,7 +2213,7 @@
             .eq("custom_gpt_id", gptId)
             .order("created_at", { ascending: true });
           if (error) throw error;
-          return (data || []).map(f => ({ ...f, isExisting: true }));
+          return (data || []).map((f) => ({ ...f, isExisting: true }));
         } catch (e) {
           console.error("GPT 파일 로드 실패:", e);
           return [];
@@ -2906,7 +2927,7 @@
         // 편집 시: DB에서 기존 파일 로드
         if (editing) {
           const existingFiles = await loadGPTFiles(editing.id);
-          const newOnly = gptBuilderFiles.filter(f => !f.isExisting);
+          const newOnly = gptBuilderFiles.filter((f) => !f.isExisting);
           gptModalFiles = [...existingFiles, ...newOnly];
         } else {
           gptModalFiles = [...gptBuilderFiles];
@@ -2955,12 +2976,13 @@
         if (!el) return;
         el.innerHTML = "";
         if (gptModalFiles.length === 0) {
-          el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
+          el.innerHTML =
+            '<div style="color:var(--text-dim);font-size:12px;padding:8px 4px;">첨부된 파일이 없습니다</div>';
           return;
         }
         for (let i = 0; i < gptModalFiles.length; i++) {
           const f = gptModalFiles[i];
-          const isPending = f.isExisting && gptModalPendingDeletes.some(dd => dd.id === f.id);
+          const isPending = f.isExisting && gptModalPendingDeletes.some((dd) => dd.id === f.id);
           const d = document.createElement("div");
           d.className = "file-list-item";
           d.style.opacity = isPending ? "0.45" : "1";
@@ -2976,7 +2998,7 @@
             const target = gptModalFiles[i];
             if (target && target.isExisting) {
               // 기존 DB 파일: 삭제 예정 토글
-              const pIdx = gptModalPendingDeletes.findIndex(x => x.id === target.id);
+              const pIdx = gptModalPendingDeletes.findIndex((x) => x.id === target.id);
               if (pIdx >= 0) {
                 gptModalPendingDeletes.splice(pIdx, 1);
               } else {
