@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     }
 
     const baseUrl = "https://openrouter.ai/api/v1";
-    const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "sk-or-v1-0000000000000000000000000000000000000000000000000000000000000000";
+    const apiKey = Deno.env.get('OPENROUTER_API_KEY') || "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";
 
     let finalSystemPrompt = systemPrompt?.trim() || BASE_SYSTEM_PROMPT;
     if (instructions?.trim()) {
