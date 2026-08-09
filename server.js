@@ -38,7 +38,7 @@ const CFG = {
     PROTOCOL: process.env.PROTOCOL || 'http',
     PORT: process.env.PORT || 3000,
     LOCALHOST_URL: process.env.LOCALHOST_URL || 'localhost',
-    HOMEPAGE_FILE_NAME: process.env.HOMEPAGE_FILE_NAME || 'index.html',
+    HOMEPAGE_FILE_NAME: process.env.HOMEPAGE_FILE_NAME || 'GoldFireDragonBrowser.html',
     SEARCH_ENGINE_URL: process.env.SEARCH_ENGINE_URL || 'https://www.google.co.jp',
     SEARCH_PROXY_URL: process.env.SEARCH_PROXY_URL || 'https://www.croxyproxy.com/_ko/?__cpLangSet=1',
     DOH_URL: process.env.DOH_URL || 'https://anycast.uncensoreddns.org/dns-query',
