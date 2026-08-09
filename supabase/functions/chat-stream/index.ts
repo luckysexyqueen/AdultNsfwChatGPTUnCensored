@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
+    const baseUrl = Deno.env.get('https://api.uncensored.com');
     const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
 
     if (!baseUrl || !apiKey) {
