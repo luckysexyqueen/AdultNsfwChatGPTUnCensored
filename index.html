@@ -13,15 +13,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
          파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-        <!-- 로그인 스킵 버튼 -->
-        <button type="button" onclick="skipLogin()">로그인 없이 둘러보기 (스킵)</button>
-    </div>
-
-    <script>
-        function skipLogin() {
-            // 비회원 상태 저장을 위한 세션 스토리지 기록 (선택 사항)
-            sessionStorage.setItem("isSkipped", "true");
-            
     <script
       src="/env-config.js"
       onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
