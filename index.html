@@ -2475,11 +2475,20 @@
       <input class="auth-input" type="password" id="auth-pw" placeholder="비밀번호" value="${authState.pw}" ${authState.loading ? "disabled" : ""}>
       <button class="auth-btn primary" id="btn-login" ${authState.loading ? "disabled" : ""}>
         ${authState.loading ? "로그인 중..." : "로그인"}
-      </button>`;
+      </button>
+      <div class="auth-divider">
+        <span>또는</span>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="auth-btn outline" id="btn-guest" style="flex: 1; margin-bottom: 0;">게스트 로그인</button>
+        <button class="auth-btn outline" id="btn-skip" style="flex: 1; margin-bottom: 0;">로그인 스킵</button>
+      </div>`;
           el.querySelector("#auth-pw").addEventListener("input", (e) => {
             authState.pw = e.target.value;
           });
           el.querySelector("#btn-login").addEventListener("click", doLogin);
+          el.querySelector("#btn-guest").addEventListener("click", doGuestLogin);
+          el.querySelector("#btn-skip").addEventListener("click", doSkipLogin);
         } else if (!authState.otpSent) {
           el.innerHTML = `<button class="auth-btn primary" id="btn-otp" ${authState.loading ? "disabled" : ""}>
       ${authState.loading ? "전송 중..." : "인증 코드 받기"}
@@ -2571,6 +2580,19 @@
         setState({ user: mapUser(data.user), view: "chat" });
         authState.loading = false;
         await loadUserData();
+      }
+
+      async function doGuestLogin() {
+        setState({
+          user: { id: "guest-" + Math.random().toString(36).substr(2, 9), email: "guest@example.com", username: "게스트" },
+          view: "chat",
+        });
+        toast("게스트로 로그인했습니다", "success");
+      }
+
+      function doSkipLogin() {
+        setState({ view: "chat" });
+        toast("로그인을 건너뛰었습니다", "info");
       }
 
       // ── MAIN LAYOUT ──────────────────────────────────────────────
