@@ -17,8 +17,256 @@
       src="/env-config.js"
       onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
     ></script>
-    <!-- LocalForage -->
-    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
+    <!-- LocalForage: CDN 제거, 네이티브 IndexedDB 기반 자체 구현으로 대체 (오프라인/WebView 안전) -->
+    <script>
+      /* ═══════════════════════════════════════════════════════════════
+         🗄️  NATIVE INDEXEDDB POLYFILL (localforage 대체)
+         - 외부 CDN 의존성 완전 제거 → 오프라인/APK WebView에서도 100% 동작
+         - localforage와 동일한 API 제공: getItem/setItem/removeItem/iterate/ready/createInstance
+         - 전역 window.localforage 로 노출하여 기존 코드 수정 없이 호환
+         ═══════════════════════════════════════════════════════════════ */
+      (function () {
+        "use strict";
+
+        function openDb(dbName, storeName) {
+          return new Promise((resolve, reject) => {
+            if (!window.indexedDB) {
+              reject(new Error("IndexedDB unsupported"));
+              return;
+            }
+            const req = indexedDB.open(dbName, 1);
+            req.onupgradeneeded = (e) => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains(storeName)) {
+                db.createObjectStore(storeName);
+              }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error || new Error("IndexedDB open failed"));
+          });
+        }
+
+        // 메모리 폴백 (IndexedDB 자체를 못 쓰는 극단적 환경 대비)
+        function memoryInstance() {
+          const mem = new Map();
+          return {
+            async getItem(key) {
+              return mem.has(key) ? mem.get(key) : null;
+            },
+            async setItem(key, value) {
+              mem.set(key, value);
+              return value;
+            },
+            async removeItem(key) {
+              mem.delete(key);
+            },
+            async clear() {
+              mem.clear();
+            },
+            async keys() {
+              return Array.from(mem.keys());
+            },
+            async iterate(cb) {
+              let i = 0;
+              for (const [k, v] of mem.entries()) {
+                const res = cb(v, k, ++i);
+                if (res !== undefined) return res;
+              }
+            },
+            async ready() {
+              return true;
+            },
+          };
+        }
+
+        function createInstance(opts) {
+          opts = opts || {};
+          const dbName = opts.name || "localforage";
+          const storeName = opts.storeName || "keyvaluepairs";
+          let dbPromise = null;
+          let failed = false;
+
+          function getDb() {
+            if (failed) return Promise.reject(new Error("indexeddb-unavailable"));
+            if (!dbPromise) {
+              dbPromise = openDb(dbName, storeName).catch((err) => {
+                failed = true;
+                console.warn("[IndexedDB] 사용 불가, 메모리 저장소로 대체:", err && err.message);
+                throw err;
+              });
+            }
+            return dbPromise;
+          }
+
+          const fallback = memoryInstance();
+          let useFallback = false;
+
+          function withStore(mode, fn) {
+            if (useFallback) return fn(null);
+            return getDb()
+              .then((db) => {
+                return new Promise((resolve, reject) => {
+                  try {
+                    const tx = db.transaction(storeName, mode);
+                    const store = tx.objectStore(storeName);
+                    const result = fn(store);
+                    tx.oncomplete = () => resolve(result && result.__val !== undefined ? result.__val : result);
+                    tx.onerror = () => reject(tx.error);
+                  } catch (err) {
+                    reject(err);
+                  }
+                });
+              })
+              .catch((err) => {
+                useFallback = true;
+                return fn(null);
+              });
+          }
+
+          return {
+            async getItem(key) {
+              if (useFallback) return fallback.getItem(key);
+              try {
+                return await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readonly");
+                      const req = tx.objectStore(storeName).get(key);
+                      req.onsuccess = () => resolve(req.result === undefined ? null : req.result);
+                      req.onerror = () => reject(req.error);
+                    })
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.getItem(key);
+              }
+            },
+            async setItem(key, value) {
+              if (useFallback) return fallback.setItem(key, value);
+              try {
+                await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readwrite");
+                      tx.objectStore(storeName).put(value, key);
+                      tx.oncomplete = () => resolve();
+                      tx.onerror = () => reject(tx.error);
+                    })
+                );
+                return value;
+              } catch (e) {
+                useFallback = true;
+                return fallback.setItem(key, value);
+              }
+            },
+            async removeItem(key) {
+              if (useFallback) return fallback.removeItem(key);
+              try {
+                await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readwrite");
+                      tx.objectStore(storeName).delete(key);
+                      tx.oncomplete = () => resolve();
+                      tx.onerror = () => reject(tx.error);
+                    })
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.removeItem(key);
+              }
+            },
+            async clear() {
+              if (useFallback) return fallback.clear();
+              try {
+                await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readwrite");
+                      tx.objectStore(storeName).clear();
+                      tx.oncomplete = () => resolve();
+                      tx.onerror = () => reject(tx.error);
+                    })
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.clear();
+              }
+            },
+            async keys() {
+              if (useFallback) return fallback.keys();
+              try {
+                return await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readonly");
+                      const req = tx.objectStore(storeName).getAllKeys();
+                      req.onsuccess = () => resolve(req.result || []);
+                      req.onerror = () => reject(req.error);
+                    })
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.keys();
+              }
+            },
+            async iterate(cb) {
+              if (useFallback) return fallback.iterate(cb);
+              try {
+                return await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readonly");
+                      const store = tx.objectStore(storeName);
+                      const req = store.openCursor();
+                      let i = 0;
+                      req.onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                          const res = cb(cursor.value, cursor.key, ++i);
+                          if (res !== undefined) {
+                            resolve(res);
+                            return;
+                          }
+                          cursor.continue();
+                        } else {
+                          resolve(undefined);
+                        }
+                      };
+                      req.onerror = () => reject(req.error);
+                    })
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.iterate(cb);
+              }
+            },
+            async ready() {
+              try {
+                await getDb();
+              } catch (e) {
+                useFallback = true;
+              }
+              return true;
+            },
+          };
+        }
+
+        // 기본(default) 인스턴스 — localforage.getItem(...) 형태의 전역 직접 호출 호환용
+        const defaultInstance = createInstance({ name: "localforage", storeName: "keyvaluepairs" });
+
+        window.localforage = {
+          getItem: (k) => defaultInstance.getItem(k),
+          setItem: (k, v) => defaultInstance.setItem(k, v),
+          removeItem: (k) => defaultInstance.removeItem(k),
+          clear: () => defaultInstance.clear(),
+          keys: () => defaultInstance.keys(),
+          iterate: (cb) => defaultInstance.iterate(cb),
+          ready: () => defaultInstance.ready(),
+          createInstance: createInstance,
+        };
+      })();
+    </script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <!-- Font Awesome (브라우저 오버레이 아이콘용) -->
@@ -2699,11 +2947,6 @@
               });
               toast("게스트로 로그인했습니다", "success");
               await loadUserData();
-            }
-      ,
-                view: "chat",
-              });
-              toast("게스트로 로그인했습니다", "success");
             }
 
             function doSkipLogin() {
