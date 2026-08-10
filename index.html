@@ -10,263 +10,15 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon.png" />
     <!-- Supabase -->
-    <!-- Supabase removed for local mode -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
          파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
     <script
       src="/env-config.js"
       onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
     ></script>
-    <!-- LocalForage: CDN 제거, 네이티브 IndexedDB 기반 자체 구현으로 대체 (오프라인/WebView 안전) -->
-    <script>
-      /* ═══════════════════════════════════════════════════════════════
-         🗄️  NATIVE INDEXEDDB POLYFILL (localforage 대체)
-         - 외부 CDN 의존성 완전 제거 → 오프라인/APK WebView에서도 100% 동작
-         - localforage와 동일한 API 제공: getItem/setItem/removeItem/iterate/ready/createInstance
-         - 전역 window.localforage 로 노출하여 기존 코드 수정 없이 호환
-         ═══════════════════════════════════════════════════════════════ */
-      (function () {
-        "use strict";
-
-        function openDb(dbName, storeName) {
-          return new Promise((resolve, reject) => {
-            if (!window.indexedDB) {
-              reject(new Error("IndexedDB unsupported"));
-              return;
-            }
-            const req = indexedDB.open(dbName, 1);
-            req.onupgradeneeded = (e) => {
-              const db = e.target.result;
-              if (!db.objectStoreNames.contains(storeName)) {
-                db.createObjectStore(storeName);
-              }
-            };
-            req.onsuccess = (e) => resolve(e.target.result);
-            req.onerror = (e) => reject(e.target.error || new Error("IndexedDB open failed"));
-          });
-        }
-
-        // 메모리 폴백 (IndexedDB 자체를 못 쓰는 극단적 환경 대비)
-        function memoryInstance() {
-          const mem = new Map();
-          return {
-            async getItem(key) {
-              return mem.has(key) ? mem.get(key) : null;
-            },
-            async setItem(key, value) {
-              mem.set(key, value);
-              return value;
-            },
-            async removeItem(key) {
-              mem.delete(key);
-            },
-            async clear() {
-              mem.clear();
-            },
-            async keys() {
-              return Array.from(mem.keys());
-            },
-            async iterate(cb) {
-              let i = 0;
-              for (const [k, v] of mem.entries()) {
-                const res = cb(v, k, ++i);
-                if (res !== undefined) return res;
-              }
-            },
-            async ready() {
-              return true;
-            },
-          };
-        }
-
-        function createInstance(opts) {
-          opts = opts || {};
-          const dbName = opts.name || "localforage";
-          const storeName = opts.storeName || "keyvaluepairs";
-          let dbPromise = null;
-          let failed = false;
-
-          function getDb() {
-            if (failed) return Promise.reject(new Error("indexeddb-unavailable"));
-            if (!dbPromise) {
-              dbPromise = openDb(dbName, storeName).catch((err) => {
-                failed = true;
-                console.warn("[IndexedDB] 사용 불가, 메모리 저장소로 대체:", err && err.message);
-                throw err;
-              });
-            }
-            return dbPromise;
-          }
-
-          const fallback = memoryInstance();
-          let useFallback = false;
-
-          function withStore(mode, fn) {
-            if (useFallback) return fn(null);
-            return getDb()
-              .then((db) => {
-                return new Promise((resolve, reject) => {
-                  try {
-                    const tx = db.transaction(storeName, mode);
-                    const store = tx.objectStore(storeName);
-                    const result = fn(store);
-                    tx.oncomplete = () => resolve(result && result.__val !== undefined ? result.__val : result);
-                    tx.onerror = () => reject(tx.error);
-                  } catch (err) {
-                    reject(err);
-                  }
-                });
-              })
-              .catch((err) => {
-                useFallback = true;
-                return fn(null);
-              });
-          }
-
-          return {
-            async getItem(key) {
-              if (useFallback) return fallback.getItem(key);
-              try {
-                return await getDb().then(
-                  (db) =>
-                    new Promise((resolve, reject) => {
-                      const tx = db.transaction(storeName, "readonly");
-                      const req = tx.objectStore(storeName).get(key);
-                      req.onsuccess = () => resolve(req.result === undefined ? null : req.result);
-                      req.onerror = () => reject(req.error);
-                    }),
-                );
-              } catch (e) {
-                useFallback = true;
-                return fallback.getItem(key);
-              }
-            },
-            async setItem(key, value) {
-              if (useFallback) return fallback.setItem(key, value);
-              try {
-                await getDb().then(
-                  (db) =>
-                    new Promise((resolve, reject) => {
-                      const tx = db.transaction(storeName, "readwrite");
-                      tx.objectStore(storeName).put(value, key);
-                      tx.oncomplete = () => resolve();
-                      tx.onerror = () => reject(tx.error);
-                    }),
-                );
-                return value;
-              } catch (e) {
-                useFallback = true;
-                return fallback.setItem(key, value);
-              }
-            },
-            async removeItem(key) {
-              if (useFallback) return fallback.removeItem(key);
-              try {
-                await getDb().then(
-                  (db) =>
-                    new Promise((resolve, reject) => {
-                      const tx = db.transaction(storeName, "readwrite");
-                      tx.objectStore(storeName).delete(key);
-                      tx.oncomplete = () => resolve();
-                      tx.onerror = () => reject(tx.error);
-                    }),
-                );
-              } catch (e) {
-                useFallback = true;
-                return fallback.removeItem(key);
-              }
-            },
-            async clear() {
-              if (useFallback) return fallback.clear();
-              try {
-                await getDb().then(
-                  (db) =>
-                    new Promise((resolve, reject) => {
-                      const tx = db.transaction(storeName, "readwrite");
-                      tx.objectStore(storeName).clear();
-                      tx.oncomplete = () => resolve();
-                      tx.onerror = () => reject(tx.error);
-                    }),
-                );
-              } catch (e) {
-                useFallback = true;
-                return fallback.clear();
-              }
-            },
-            async keys() {
-              if (useFallback) return fallback.keys();
-              try {
-                return await getDb().then(
-                  (db) =>
-                    new Promise((resolve, reject) => {
-                      const tx = db.transaction(storeName, "readonly");
-                      const req = tx.objectStore(storeName).getAllKeys();
-                      req.onsuccess = () => resolve(req.result || []);
-                      req.onerror = () => reject(req.error);
-                    }),
-                );
-              } catch (e) {
-                useFallback = true;
-                return fallback.keys();
-              }
-            },
-            async iterate(cb) {
-              if (useFallback) return fallback.iterate(cb);
-              try {
-                return await getDb().then(
-                  (db) =>
-                    new Promise((resolve, reject) => {
-                      const tx = db.transaction(storeName, "readonly");
-                      const store = tx.objectStore(storeName);
-                      const req = store.openCursor();
-                      let i = 0;
-                      req.onsuccess = (e) => {
-                        const cursor = e.target.result;
-                        if (cursor) {
-                          const res = cb(cursor.value, cursor.key, ++i);
-                          if (res !== undefined) {
-                            resolve(res);
-                            return;
-                          }
-                          cursor.continue();
-                        } else {
-                          resolve(undefined);
-                        }
-                      };
-                      req.onerror = () => reject(req.error);
-                    }),
-                );
-              } catch (e) {
-                useFallback = true;
-                return fallback.iterate(cb);
-              }
-            },
-            async ready() {
-              try {
-                await getDb();
-              } catch (e) {
-                useFallback = true;
-              }
-              return true;
-            },
-          };
-        }
-
-        // 기본(default) 인스턴스 — localforage.getItem(...) 형태의 전역 직접 호출 호환용
-        const defaultInstance = createInstance({ name: "localforage", storeName: "keyvaluepairs" });
-
-        window.localforage = {
-          getItem: (k) => defaultInstance.getItem(k),
-          setItem: (k, v) => defaultInstance.setItem(k, v),
-          removeItem: (k) => defaultInstance.removeItem(k),
-          clear: () => defaultInstance.clear(),
-          keys: () => defaultInstance.keys(),
-          iterate: (cb) => defaultInstance.iterate(cb),
-          ready: () => defaultInstance.ready(),
-          createInstance: createInstance,
-        };
-      })();
-    </script>
+    <!-- LocalForage -->
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <!-- Font Awesome (브라우저 오버레이 아이콘용) -->
@@ -277,7 +29,7 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GoldFireDragonFullUnCensoredGoogleProxyInAndroidWebBrowserAppHomePage@refs/heads/codespace-super-robot-xrwp9jp647v62v74v/fonts/gamefont.css"
     />
-
+    
     <style>
       @font-face {
         font-family: "acutehoney";
@@ -297,7 +49,7 @@
         font-family: "acutehoney", sans-serif !important;
       }
     </style>
-
+    
     <style>
       /* ===== RESET & BASE ===== */
       *,
@@ -1679,20 +1431,20 @@
           overlay.id = "sb-key-overlay";
           overlay.className = "modal-overlay";
           overlay.innerHTML = `
-                  <div class="modal-box" style="max-width:420px;">
-                    <div class="modal-header">
-                      <div class="modal-title">Supabase 연결 설정</div>
-                    </div>
-                    <div class="modal-body">
-                      <div class="form-group">
-                        <label class="form-label">Supabase Anon Key<span class="req">*</span></label>
-                        <div class="form-hint">최초 1회만 입력하면 이 기기에 저장되어 다음부터 자동으로 사용됩니다.</div>
-                        <input class="form-input" id="sb-key-input" type="text" placeholder="eyJhbGciOi..." autocomplete="off" spellcheck="false" />
-                        <div class="sb-key-error" id="sb-key-error"></div>
-                      </div>
-                      <button class="auth-btn primary" id="sb-key-submit">저장하고 시작하기</button>
-                    </div>
-                  </div>`;
+            <div class="modal-box" style="max-width:420px;">
+              <div class="modal-header">
+                <div class="modal-title">Supabase 연결 설정</div>
+              </div>
+              <div class="modal-body">
+                <div class="form-group">
+                  <label class="form-label">Supabase Anon Key<span class="req">*</span></label>
+                  <div class="form-hint">최초 1회만 입력하면 이 기기에 저장되어 다음부터 자동으로 사용됩니다.</div>
+                  <input class="form-input" id="sb-key-input" type="text" placeholder="eyJhbGciOi..." autocomplete="off" spellcheck="false" />
+                  <div class="sb-key-error" id="sb-key-error"></div>
+                </div>
+                <button class="auth-btn primary" id="sb-key-submit">저장하고 시작하기</button>
+              </div>
+            </div>`;
           document.body.appendChild(overlay);
 
           const input = overlay.querySelector("#sb-key-input");
@@ -1727,183 +1479,78 @@
       }
 
       // ═══════════════════════════════════════════════════════════════
-      // 💾  LOCAL STORAGE PROVIDER (Supabase Mock - Robust Version)
+      // 🗄️  SUPABASE CLIENT (CDN 로딩 실패 + 키 미설정에 대비한 방어적 초기화)
+      //     anon key 해석이 끝날 때까지 기다린 뒤 클라이언트를 생성한다.
+      //     BOOT 시퀀스는 아래 supabaseReady를 await한 뒤 진행된다.
       // ═══════════════════════════════════════════════════════════════
-      const LocalDB = {
-        async get(store) {
-          return (await localforage.getItem(store)) || [];
-        },
-        async save(store, data) {
-          await localforage.setItem(store, data);
-        },
-      };
-
-      let sb;
-      const supabaseReady = (async function initLocalSB() {
-        window.addEventListener("online", () => setState({ isOnline: true }));
-        window.addEventListener("offline", () => setState({ isOnline: false }));
-
-        const chain = (table) => {
-          let filters = [];
-          let sortCol = "created_at";
-          let ascending = false;
-
-          const p = {
-            select: () => p,
-            insert: (row) => ({
-              select: () => ({
-                single: () => ({
-                  then: async (resolve) => {
-                    const data = await LocalDB.get(table);
-                    const newRow = {
-                      id: row.id || "id-" + Date.now() + "-" + Math.random().toString(36).slice(2),
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString(),
-                      ...row,
-                    };
-                    data.unshift(newRow);
-                    await LocalDB.save(table, data);
-                    if (resolve) resolve({ data: newRow, error: null });
-                    return { data: newRow, error: null };
-                  },
-                }),
-              }),
-            }),
-            update: (updates) => ({
-              eq: (col, val) => ({
-                then: async (resolve) => {
-                  const data = await LocalDB.get(table);
-                  const idx = data.findIndex((x) => x[col] === val);
-                  if (idx !== -1) {
-                    data[idx] = { ...data[idx], ...updates, updated_at: new Date().toISOString() };
-                    await LocalDB.save(table, data);
-                    if (resolve) resolve({ data: data[idx], error: null });
-                    return { data: data[idx], error: null };
-                  } else {
-                    if (resolve) resolve({ data: null, error: { message: "Not found" } });
-                    return { data: null, error: { message: "Not found" } };
-                  }
-                },
-              }),
-            }),
-            delete: () => ({
-              eq: (col, val) => ({
-                then: async (resolve) => {
-                  const data = await LocalDB.get(table);
-                  const filtered = data.filter((x) => x[col] !== val);
-                  await LocalDB.save(table, filtered);
-                  if (resolve) resolve({ error: null });
-                  return { error: null };
-                },
-              }),
-            }),
-            eq: (k, v) => {
-              filters.push({ k, v });
-              return p;
+      let sb = null;
+      const supabaseReady = (async () => {
+        try {
+          const anonKey = await resolveAnonKey();
+          if (typeof supabase === "undefined" || !supabase.createClient) {
+            throw new Error("Supabase SDK가 로드되지 않았습니다 (CDN 차단/네트워크 문제 가능성)");
+          }
+          sb = supabase.createClient(SUPABASE_URL, anonKey, {
+            auth: { persistSession: true, autoRefreshToken: true },
+          });
+        } catch (e) {
+          console.error("Supabase client init failed:", e);
+          // sb가 null이면 아래 모든 sb.* 호출이 실패하므로,
+          // 최소한의 no-op 더미 클라이언트로 대체해 스크립트 전체가 죽지 않게 한다.
+          const alwaysFail = () => Promise.resolve({ data: null, error: new Error("Supabase unavailable") });
+          const chain = () => {
+            const obj = {
+              select: () => chain(),
+              eq: () => chain(),
+              or: () => chain(),
+              order: () => chain(),
+              insert: () => chain(),
+              update: () => chain(),
+              delete: () => chain(),
+              single: () => alwaysFail(),
+              then: (resolve) => resolve({ data: [], error: new Error("Supabase unavailable") }),
+            };
+            return obj;
+          };
+          sb = {
+            auth: {
+              getSession: () => Promise.resolve({ data: { session: null } }),
+              onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+              signInWithPassword: () => alwaysFail(),
+              signInWithOtp: () => alwaysFail(),
+              verifyOtp: () => alwaysFail(),
+              updateUser: () => alwaysFail(),
+              signOut: () => Promise.resolve({ error: null }),
             },
-            or: (query) => {
-              filters.push({ or: query });
-              return p;
-            },
-            order: (col, opts) => {
-              sortCol = col;
-              ascending = opts?.ascending || false;
-              return p;
-            },
-            single: () => ({
-              then: async (resolve) => {
-                const { data, error } = await p.then((r) => r);
-                const res = { data: data ? data[0] : null, error };
-                if (resolve) resolve(res);
-                return res;
-              },
-            }),
-            then: async (resolve) => {
-              let data = await LocalDB.get(table);
-              for (const f of filters) {
-                if (f.or) {
-                  data = data.filter((x) => x.user_id === S.user?.id || x.is_public === true);
-                } else {
-                  data = data.filter((x) => x[f.k] === f.v);
-                }
-              }
-              data.sort((a, b) => {
-                const va = a[sortCol],
-                  vb = b[sortCol];
-                if (va < vb) return ascending ? -1 : 1;
-                if (va > vb) return ascending ? 1 : -1;
-                return 0;
-              });
-              if (resolve) resolve({ data, error: null });
-              return { data, error: null };
+            from: () => chain(),
+            storage: {
+              from: () => ({
+                upload: () => alwaysFail(),
+                createSignedUrl: () => alwaysFail(),
+              }),
             },
           };
-          return p;
-        };
-
-        sb = {
-          auth: {
-            getSession: async () => {
-              const user = await localforage.getItem("local_user");
-              return { data: { session: user ? { user, access_token: "local-token" } : null } };
-            },
-            onAuthStateChange: (cb) => {
-              return { data: { subscription: { unsubscribe() {} } } };
-            },
-            signInWithPassword: async ({ email }) => {
-              const user = { id: "u-" + Date.now(), email, user_metadata: { username: email.split("@")[0] } };
-              await localforage.setItem("local_user", user);
-              return { data: { user }, error: null };
-            },
-            signInWithOtp: () => Promise.resolve({ error: null }),
-            verifyOtp: async ({ email }) => {
-              const user = { id: "u-" + Date.now(), email, user_metadata: { username: email.split("@")[0] } };
-              await localforage.setItem("local_user", user);
-              return { data: { user }, error: null };
-            },
-            updateUser: async ({ data }) => {
-              const user = await localforage.getItem("local_user");
-              const newUser = { ...user, user_metadata: { ...user.user_metadata, ...data } };
-              await localforage.setItem("local_user", newUser);
-              return { data: { user: newUser }, error: null };
-            },
-            signOut: async () => {
-              await localforage.removeItem("local_user");
-              return { error: null };
-            },
-          },
-          from: (table) => chain(table),
-          storage: {
-            from: (bucket) => ({
-              upload: async (path, file) => {
-                const id = "storage-" + path.replace(/[^a-zA-Z0-9]/g, "_");
-                await localforage.setItem(id, file);
-                return { data: { path }, error: null };
-              },
-              remove: async (paths) => {
-                for (const p of paths) {
-                  const id = "storage-" + p.replace(/[^a-zA-Z0-9]/g, "_");
-                  await localforage.removeItem(id);
-                }
-                return { error: null };
-              },
-              createSignedUrl: async (path) => {
-                const id = "storage-" + path.replace(/[^a-zA-Z0-9]/g, "_");
-                const blob = await localforage.getItem(id);
-                return { data: { signedUrl: blob ? URL.createObjectURL(blob) : "" }, error: null };
-              },
-            }),
-          },
-        };
-
-        // Initial Auth Check
-        const {
-          data: { session },
-        } = await sb.auth.getSession();
-        if (session?.user) {
-          setState({ user: mapUser(session.user), view: "chat" });
-          loadUserData();
         }
+
+        // (기존에 최상위에서 바로 등록되던 인증 상태 리스너 — sb가 준비된 직후로 이동)
+        sb.auth.onAuthStateChange((event, session) => {
+          if (event === "SIGNED_IN" && session?.user) {
+            setState({ user: mapUser(session.user), view: "chat" });
+            loadUserData();
+          } else if (event === "SIGNED_OUT") {
+            setState({
+              user: null,
+              view: "auth",
+              conversations: [],
+              messages: [],
+              customGPTs: [],
+              currentConvId: null,
+              currentGPT: null,
+            });
+          } else if (event === "TOKEN_REFRESHED" && session?.user) {
+            setState({ user: mapUser(session.user) });
+          }
+        });
       })();
 
       // ═══════════════════════════════════════════════════════════════
@@ -2361,8 +2008,7 @@
         const trimmed = content.trim();
         if (!trimmed && filesToSend.length === 0) return;
         if (S.isStreaming) return;
-        if (false) {
-          // Allow offline message saving
+        if (!S.isOnline) {
           toast("오프라인 상태입니다", "error");
           return;
         }
@@ -2370,7 +2016,7 @@
         let convId = S.currentConvId;
         let savedMsgId = null;
         const tempId = `temp-${Date.now()}`;
-        const isGuest = true;
+        const isGuest = false;
 
         // Determine system prompt / instructions
         let sysPrompt = S.currentGPT?.system_prompt;
@@ -2475,12 +2121,6 @@
             data: { session },
           } = await sb.auth.getSession();
           const token = session?.access_token || (isGuest ? "guest-token" : "anon");
-
-          if (!S.isOnline) {
-            throw new Error(
-              "오프라인 상태입니다. 메시지는 로컬에 저장되었지만 AI 응답을 받으려면 인터넷 연결이 필요합니다.",
-            );
-          }
           const resp = await fetch(EDGE_FUNCTION_URL, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -2812,16 +2452,16 @@
 
       function renderAuth() {
         app.innerHTML = `
-        <div id="auth-page">
-          <div class="auth-card">
-            <div class="auth-logo">${iconSvg("MessageSquare", 24)}</div>
-            <div class="auth-title" id="auth-title">${authState.isLogin ? "로그인" : "회원가입"}</div>
-            <div class="auth-sub">ChatGPT 스타일 AI 채팅을 시작하세요</div>
-            <input class="auth-input" type="email" id="auth-email" placeholder="이메일" value="${authState.email}" ${authState.loading || authState.otpSent ? "disabled" : ""}>
-            <div id="auth-extra"></div>
-            <div class="auth-switch" id="auth-switch">${authState.isLogin ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}</div>
-          </div>
-        </div>`;
+  <div id="auth-page">
+    <div class="auth-card">
+      <div class="auth-logo">${iconSvg("MessageSquare", 24)}</div>
+      <div class="auth-title" id="auth-title">${authState.isLogin ? "로그인" : "회원가입"}</div>
+      <div class="auth-sub">ChatGPT 스타일 AI 채팅을 시작하세요</div>
+      <input class="auth-input" type="email" id="auth-email" placeholder="이메일" value="${authState.email}" ${authState.loading || authState.otpSent ? "disabled" : ""}>
+      <div id="auth-extra"></div>
+      <div class="auth-switch" id="auth-switch">${authState.isLogin ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}</div>
+    </div>
+  </div>`;
 
         renderAuthExtra();
         bindAuth();
@@ -2832,35 +2472,26 @@
         if (!el) return;
         if (authState.isLogin) {
           el.innerHTML = `
-            <input class="auth-input" type="password" id="auth-pw" placeholder="비밀번호" value="${authState.pw}" ${authState.loading ? "disabled" : ""}>
-            <button class="auth-btn primary" id="btn-login" ${authState.loading ? "disabled" : ""}>
-              ${authState.loading ? "로그인 중..." : "로그인"}
-            </button>
-            <div class="auth-divider">
-              <span>또는</span>
-            </div>
-            <div style="display: flex; gap: 8px;">
-              <button class="auth-btn outline" id="btn-guest" style="flex: 1; margin-bottom: 0;">게스트 로그인</button>
-              <button class="auth-btn outline" id="btn-skip" style="flex: 1; margin-bottom: 0;">로그인 스킵</button>
-            </div>`;
+      <input class="auth-input" type="password" id="auth-pw" placeholder="비밀번호" value="${authState.pw}" ${authState.loading ? "disabled" : ""}>
+      <button class="auth-btn primary" id="btn-login" ${authState.loading ? "disabled" : ""}>
+        ${authState.loading ? "로그인 중..." : "로그인"}
+      </button>`;
           el.querySelector("#auth-pw").addEventListener("input", (e) => {
             authState.pw = e.target.value;
           });
           el.querySelector("#btn-login").addEventListener("click", doLogin);
-          el.querySelector("#btn-guest").addEventListener("click", doGuestLogin);
-          el.querySelector("#btn-skip").addEventListener("click", doSkipLogin);
         } else if (!authState.otpSent) {
           el.innerHTML = `<button class="auth-btn primary" id="btn-otp" ${authState.loading ? "disabled" : ""}>
-            ${authState.loading ? "전송 중..." : "인증 코드 받기"}
-          </button>`;
+      ${authState.loading ? "전송 중..." : "인증 코드 받기"}
+    </button>`;
           el.querySelector("#btn-otp").addEventListener("click", doSendOtp);
         } else {
           el.innerHTML = `
-            <input class="auth-input" placeholder="인증 코드 (4자리)" id="auth-otp" maxlength="4" value="${authState.otp}" ${authState.loading ? "disabled" : ""}>
-            <input class="auth-input" type="password" id="auth-pw2" placeholder="비밀번호 설정" value="${authState.pw}" ${authState.loading ? "disabled" : ""}>
-            <button class="auth-btn primary" id="btn-register" ${authState.loading ? "disabled" : ""}>
-              ${authState.loading ? "가입 중..." : "회원가입 완료"}
-            </button>`;
+      <input class="auth-input" placeholder="인증 코드 (4자리)" id="auth-otp" maxlength="4" value="${authState.otp}" ${authState.loading ? "disabled" : ""}>
+      <input class="auth-input" type="password" id="auth-pw2" placeholder="비밀번호 설정" value="${authState.pw}" ${authState.loading ? "disabled" : ""}>
+      <button class="auth-btn primary" id="btn-register" ${authState.loading ? "disabled" : ""}>
+        ${authState.loading ? "가입 중..." : "회원가입 완료"}
+      </button>`;
           el.querySelector("#auth-otp").addEventListener("input", (e) => {
             authState.otp = e.target.value;
           });
@@ -2923,7 +2554,6 @@
           return;
         }
         setState({ user: mapUser(data.user), view: "chat" });
-        await loadUserData();
         authState.loading = false;
         await loadUserData();
       }
@@ -2939,113 +2569,92 @@
           return;
         }
         setState({ user: mapUser(data.user), view: "chat" });
-        await loadUserData();
         authState.loading = false;
         await loadUserData();
-      }
-
-      async function doGuestLogin() {
-        const user = {
-          id: "guest-" + Math.random().toString(36).substr(2, 9),
-          email: "guest@example.com",
-          username: "게스트",
-        };
-        await localforage.setItem("local_user", user);
-        setState({
-          user: user,
-          view: "chat",
-        });
-        toast("게스트로 로그인했습니다", "success");
-        await loadUserData();
-      }
-
-      function doSkipLogin() {
-        setState({ view: "chat" });
-        toast("로그인을 건너뛰었습니다", "info");
       }
 
       // ── MAIN LAYOUT ──────────────────────────────────────────────
       function renderMain() {
         app.innerHTML = `
-        <div id="sidebar-backdrop" class="${S.sidebarOpen ? "open" : ""}"></div>
-        <div id="main-layout">
-          <div id="sidebar" class="${S.sidebarOpen ? "open" : ""}">
-            <div class="sidebar-top" style="display:flex;flex-direction:column;gap:8px;">
-              <button class="btn-new-chat" id="btn-new-chat">
-                ${iconSvg("Plus", 16)} 새 채팅
-              </button>
+  <div id="sidebar-backdrop" class="${S.sidebarOpen ? "open" : ""}"></div>
+  <div id="main-layout">
+    <div id="sidebar" class="${S.sidebarOpen ? "open" : ""}">
+      <div class="sidebar-top" style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn-new-chat" id="btn-new-chat">
+          ${iconSvg("Plus", 16)} 새 채팅
+        </button>
+      </div>
+      <div id="gpt-section" class="gpt-section"></div>
+      <div class="sidebar-section" id="conv-list">
+        <div class="sidebar-label">최근 대화</div>
+      </div>
+    </div>
+    <div id="content-area">
+      <div id="header">
+        <div class="header-title" style="display:flex;align-items:center;gap:12px;">
+          <button class="sidebar-toggle-btn ${S.sidebarOpen ? "active" : ""}" id="btn-toggle-sidebar" title="사이드바 열기/닫기">
+            ☰
+          </button>
+          <span style="display:flex;align-items:center;gap:10px;">${iconSvg("MessageSquare", 20)} AI Chat</span>
+        </div>
+        <div class="header-right">
+          <button class="browser-toggle-btn ${S.browserOpen ? "active" : ""}" id="btn-open-browser" title="브라우저 열기/닫기">
+            🌐
+          </button>
+          <button class="user-btn" id="user-btn" title="${S.user?.username || ""}">
+            ${S.user?.avatar ? `<img src="${S.user.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : (S.user?.username || "?").charAt(0).toUpperCase()}
+          </button>
+          <div class="dropdown ${S.dropdownOpen ? "open" : ""}" id="user-dropdown">
+            <div class="dropdown-header">
+              <div class="dropdown-user-name">${S.user?.username || ""}</div>
+              <div class="dropdown-user-email">${S.user?.email || ""}</div>
             </div>
-            <div id="gpt-section" class="gpt-section"></div>
-            <div class="sidebar-section" id="conv-list">
-              <div class="sidebar-label">최근 대화</div>
-            </div>
-          </div>
-          <div id="content-area">
-            <div id="header">
-              <div class="header-title" style="display:flex;align-items:center;gap:12px;">
-                <button class="sidebar-toggle-btn ${S.sidebarOpen ? "active" : ""}" id="btn-toggle-sidebar" title="사이드바 열기/닫기">
-                  ☰
-                </button>
-                <span style="display:flex;align-items:center;gap:10px;">${iconSvg("MessageSquare", 20)} AI Chat</span>
-              </div>
-              <div class="header-right">
-                <button class="browser-toggle-btn ${S.browserOpen ? "active" : ""}" id="btn-open-browser" title="브라우저 열기/닫기">
-                  🌐
-                </button>
-                <button class="user-btn" id="user-btn" title="${S.user?.username || ""}">
-                  ${S.user?.avatar ? `<img src="${S.user.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : (S.user?.username || "?").charAt(0).toUpperCase()}
-                </button>
-                <div class="dropdown ${S.dropdownOpen ? "open" : ""}" id="user-dropdown">
-                  <div class="dropdown-header">
-                    <div class="dropdown-user-name">${S.user?.username || ""}</div>
-                    <div class="dropdown-user-email">${S.user?.email || ""}</div>
-                  </div>
-                  <div class="dropdown-item" id="dd-queue">${iconSvg("MessageSquarePlus", 14)} 대기 메시지 전송</div>
-                  <div class="dropdown-sep"></div>
-                  <div class="dropdown-item danger" id="dd-logout">${iconSvg("LogOut", 14)} 로그아웃</div>
-                </div>
-              </div>
-            </div>
-            <div id="gpt-banner" class="${S.currentGPT ? "visible" : ""}">
-              ${
-                S.currentGPT
-                  ? `
-                <div class="gpt-banner-avatar">
-                  ${S.currentGPT.avatar_url ? `<img src="${S.currentGPT.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : S.currentGPT.name[0] || "?"}
-                </div>
-                <div>
-                  <div style="font-weight:600;">${S.currentGPT.name}</div>
-                  ${S.currentGPT.description ? `<div style="font-size:13px;color:rgba(255,255,255,0.6);">${S.currentGPT.description}</div>` : ""}
-                </div>`
-                  : ""
-              }
-            </div>
-            <div id="messages-area">
-              ${S.messages.length === 0 && !S.currentConvId ? renderEmptyState() : '<div class="messages-inner" id="messages-inner"></div>'}
-            </div>
-            <div id="chat-input-area">
-              <div class="input-wrap">
-                <div id="file-previews"></div>
-                <div class="input-box">
-                  <button class="input-box-btn" id="btn-attach" title="파일 첨부" ${S.isStreaming ? "disabled" : ""}>
-                    ${iconSvg("Paperclip", 20)}
-                  </button>
-                  <input type="file" id="file-input" multiple style="display:none;">
-                  <textarea id="msg-input" rows="1"
-                    placeholder="${S.attachedFiles.length > 0 ? "파일에 대해 질문하거나 Enter로 전송..." : "메시지를 입력하세요..."}"
-                    ${S.isStreaming ? "disabled" : ""}
-                    style="height:auto;min-height:24px;"></textarea>
-                  <button class="send-btn" id="btn-send" ${S.isStreaming ? "disabled" : ""} title="전송">
-                    ${iconSvg("Send", 15)}
-                  </button>
-                </div>
-                <div class="input-hint">이미지·PDF·텍스트 등 모든 파일 첨부 지원 · Enter로 전송, Shift+Enter로 줄바꿈</div>
-              </div>
-            </div>
+            <div class="dropdown-item" id="dd-queue">${iconSvg("MessageSquarePlus", 14)} 대기 메시지 전송</div>
+            <div class="dropdown-sep"></div>
+            <div class="dropdown-item danger" id="dd-logout">${iconSvg("LogOut", 14)} 로그아웃</div>
           </div>
         </div>
-        <div class="modal-overlay hidden" id="gpt-modal"></div>
-        `;
+      </div>
+      <div id="gpt-banner" class="${S.currentGPT ? "visible" : ""}">
+        ${
+          S.currentGPT
+            ? `
+          <div class="gpt-banner-avatar">
+            ${S.currentGPT.avatar_url ? `<img src="${S.currentGPT.avatar_url}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : S.currentGPT.name[0] || "?"}
+          </div>
+          <div>
+            <div style="font-weight:600;">${S.currentGPT.name}</div>
+            ${S.currentGPT.description ? `<div style="font-size:13px;color:rgba(255,255,255,0.6);">${S.currentGPT.description}</div>` : ""}
+          </div>`
+            : ""
+        }
+      </div>
+      <div id="messages-area">
+        ${S.messages.length === 0 && !S.currentConvId ? renderEmptyState() : '<div class="messages-inner" id="messages-inner"></div>'}
+      </div>
+      <div id="chat-input-area">
+        <div class="input-wrap">
+          <div id="file-previews"></div>
+          <div class="input-box">
+            <button class="input-box-btn" id="btn-attach" title="파일 첨부" ${S.isStreaming ? "disabled" : ""}>
+              ${iconSvg("Paperclip", 20)}
+            </button>
+            <input type="file" id="file-input" multiple style="display:none;">
+            <textarea id="msg-input" rows="1"
+              placeholder="${S.attachedFiles.length > 0 ? "파일에 대해 질문하거나 Enter로 전송..." : "메시지를 입력하세요..."}"
+              ${S.isStreaming ? "disabled" : ""}
+              style="height:auto;min-height:24px;"></textarea>
+            <button class="send-btn" id="btn-send" ${S.isStreaming ? "disabled" : ""} title="전송">
+              ${iconSvg("Send", 15)}
+            </button>
+          </div>
+          <div class="input-hint">이미지·PDF·텍스트 등 모든 파일 첨부 지원 · Enter로 전송, Shift+Enter로 줄바꿈</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay hidden" id="gpt-modal"></div>
+  `;
 
         renderConvList();
         renderGPTSection();
@@ -3057,10 +2666,10 @@
 
       function renderEmptyState() {
         return `<div id="empty-state">
-          <div class="empty-logo">${iconSvg("MessageSquare", 28)}</div>
-          <div class="empty-title">무엇이든 물어보세요</div>
-          <div class="empty-sub">AI와 자유롭게 대화하세요. 이미지와 파일도 첨부할 수 있습니다.</div>
-        </div>`;
+    <div class="empty-logo">${iconSvg("MessageSquare", 28)}</div>
+    <div class="empty-title">무엇이든 물어보세요</div>
+    <div class="empty-sub">AI와 자유롭게 대화하세요. 이미지와 파일도 첨부할 수 있습니다.</div>
+  </div>`;
       }
 
       function renderConvList() {
@@ -3072,10 +2681,10 @@
         }
         for (const cv of S.conversations) {
           html += `<div class="conv-item ${S.currentConvId === cv.id ? "active" : ""}" data-cid="${cv.id}">
-            ${iconSvg("MessageSquare", 14)}
-            <span class="conv-item-title">${escHtml(cv.title || "새 대화")}</span>
-            <button class="conv-item-del" data-del="${cv.id}" title="삭제">${iconSvg("Trash2", 13)}</button>
-          </div>`;
+      ${iconSvg("MessageSquare", 14)}
+      <span class="conv-item-title">${escHtml(cv.title || "새 대화")}</span>
+      <button class="conv-item-del" data-del="${cv.id}" title="삭제">${iconSvg("Trash2", 13)}</button>
+    </div>`;
         }
         el.innerHTML = html;
         el.querySelectorAll(".conv-item").forEach((item) => {
@@ -3098,25 +2707,25 @@
         const el = document.getElementById("gpt-section");
         if (!el) return;
         let html = `<div class="gpt-header">
-          <span class="gpt-header-title">${iconSvg("Bot", 16)} 커스텀 GPT</span>
-          <button class="btn-create-gpt" id="btn-create-gpt">+ 만들기</button>
-        </div>`;
+    <span class="gpt-header-title">${iconSvg("Bot", 16)} 커스텀 GPT</span>
+    <button class="btn-create-gpt" id="btn-create-gpt">+ 만들기</button>
+  </div>`;
         if (S.customGPTs.length === 0) {
           html += `<div class="gpt-empty">아직 커스텀 GPT가 없습니다<br>위 버튼을 눌러 만들어보세요!</div>`;
         } else {
           for (const g of S.customGPTs) {
             html += `<div class="gpt-item" data-gid="${g.id}">
-              <div class="gpt-avatar">${g.avatar_url ? `<img src="${g.avatar_url}" alt="${escHtml(g.name)}">` : g.name[0] || "?"}</div>
-              <div class="gpt-info">
-                <div class="gpt-name">${escHtml(g.name)}</div>
-                ${g.description ? `<div class="gpt-desc">${escHtml(g.description)}</div>` : ""}
-              </div>
-              <div class="gpt-actions">
-                <button class="gpt-action-btn" data-gpt-chat="${g.id}" title="대화 시작">${iconSvg("MessageSquarePlus", 14)}</button>
-                <button class="gpt-action-btn" data-gpt-edit="${g.id}" title="수정">${iconSvg("Edit2", 14)}</button>
-                <button class="gpt-action-btn" data-gpt-del="${g.id}" title="삭제" style="color:var(--danger)">${iconSvg("Trash2", 14)}</button>
-              </div>
-            </div>`;
+        <div class="gpt-avatar">${g.avatar_url ? `<img src="${g.avatar_url}" alt="${escHtml(g.name)}">` : g.name[0] || "?"}</div>
+        <div class="gpt-info">
+          <div class="gpt-name">${escHtml(g.name)}</div>
+          ${g.description ? `<div class="gpt-desc">${escHtml(g.description)}</div>` : ""}
+        </div>
+        <div class="gpt-actions">
+          <button class="gpt-action-btn" data-gpt-chat="${g.id}" title="대화 시작">${iconSvg("MessageSquarePlus", 14)}</button>
+          <button class="gpt-action-btn" data-gpt-edit="${g.id}" title="수정">${iconSvg("Edit2", 14)}</button>
+          <button class="gpt-action-btn" data-gpt-del="${g.id}" title="삭제" style="color:var(--danger)">${iconSvg("Trash2", 14)}</button>
+        </div>
+      </div>`;
           }
         }
         el.innerHTML = html;
@@ -3221,12 +2830,12 @@
         const avatarClass = msg.role === "user" ? "user" : "assistant";
         const avatarIcon = msg.role === "user" ? iconSvg("User", 16) : iconSvg("Bot", 16);
         div.innerHTML = `<div class="message-inner">
-          <div class="msg-avatar ${avatarClass}">${avatarIcon}</div>
-          <div class="msg-body">
-            <div class="msg-files" data-files-placeholder></div>
-            <div class="msg-text">${escHtml(msg.content)}${msg._streaming ? '<span class="msg-cursor"></span>' : ""}</div>
-          </div>
-        </div>`;
+    <div class="msg-avatar ${avatarClass}">${avatarIcon}</div>
+    <div class="msg-body">
+      <div class="msg-files" data-files-placeholder></div>
+      <div class="msg-text">${escHtml(msg.content)}${msg._streaming ? '<span class="msg-cursor"></span>' : ""}</div>
+    </div>
+  </div>`;
         return div;
       }
 
@@ -3266,13 +2875,13 @@
           if (lf.previewUrl) {
             d.className = "fp-img";
             d.innerHTML = `<img src="${lf.previewUrl}" alt="${escHtml(lf.file.name)}">
-              <div class="fp-img-name">${escHtml(lf.file.name)}</div>
-              <button class="fp-remove" data-fid="${lf.id}">×</button>`;
+        <div class="fp-img-name">${escHtml(lf.file.name)}</div>
+        <button class="fp-remove" data-fid="${lf.id}">×</button>`;
           } else {
             d.className = "fp-chip";
             d.innerHTML = `${iconSvg("FileText", 14)}
-              <div><div class="fp-chip-name">${escHtml(lf.file.name)}</div><div class="fp-chip-size">${fmtSize(lf.file.size)}</div></div>
-              <button class="fp-remove" data-fid="${lf.id}" style="position:static;background:none;color:var(--text-muted)">×</button>`;
+        <div><div class="fp-chip-name">${escHtml(lf.file.name)}</div><div class="fp-chip-size">${fmtSize(lf.file.size)}</div></div>
+        <button class="fp-remove" data-fid="${lf.id}" style="position:static;background:none;color:var(--text-muted)">×</button>`;
           }
           d.querySelector("[data-fid]").addEventListener("click", () => {
             removeAttachedFile(lf.id);
@@ -3296,49 +2905,49 @@
         const editing = S.gptBuilderEditing;
         overlay.classList.remove("hidden");
         overlay.innerHTML = `<div class="modal-box">
-          <div class="modal-header">
-            <div class="modal-title">${editing ? "커스텀 GPT 수정" : "새 커스텀 GPT 만들기"}</div>
-            <button class="modal-close" id="modal-close">${iconSvg("X", 20)}</button>
-          </div>
-          <div class="modal-body">
-            <div class="form-group">
-              <label class="form-label">이름<span class="req">*</span></label>
-              <input class="form-input" id="gf-name" placeholder="예: 코딩 전문가" value="${escHtml(editing?.name || "")}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">설명</label>
-              <input class="form-input" id="gf-desc" placeholder="이 GPT가 무엇을 하는지 간단히 설명하세요" value="${escHtml(editing?.description || "")}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">시스템 프롬프트<span class="req">*</span></label>
-              <textarea class="form-input form-textarea" id="gf-sys" placeholder="AI의 역할과 성격을 정의하세요">${escHtml(editing?.system_prompt || "")}</textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">지침<span class="req">*</span></label>
-              <textarea class="form-input form-textarea" id="gf-inst" placeholder="구체적인 행동 지침을 작성하세요">${escHtml(editing?.instructions || "")}</textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">아바타 URL (선택)</label>
-              <input class="form-input" id="gf-avatar" type="url" placeholder="https://example.com/avatar.png" value="${escHtml(editing?.avatar_url || "")}">
-            </div>
-            <div class="form-group">
-              <label class="form-label">파일 첨부 (선택)</label>
-              <input type="file" id="gf-file-input" multiple style="display:none;">
-              <div class="upload-zone" id="upload-zone">${iconSvg("Upload", 24)}<div class="upload-zone-text">파일을 클릭하여 업로드</div><div class="upload-zone-hint">텍스트·코드·이미지·PDF 등 모든 형식 지원</div></div>
-              <div class="file-list" id="gf-file-list"></div>
-            </div>
-            <div class="form-group">
-              <div class="checkbox-row">
-                <input type="checkbox" id="gf-public" ${editing?.is_public ? "checked" : ""}>
-                <label for="gf-public" style="font-size:13px;">이 GPT를 다른 사용자와 공유</label>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button class="btn-cancel" id="modal-cancel">취소</button>
-              <button class="btn-save" id="modal-save">${editing ? "수정" : "생성"}</button>
-            </div>
-          </div>
-        </div>`;
+    <div class="modal-header">
+      <div class="modal-title">${editing ? "커스텀 GPT 수정" : "새 커스텀 GPT 만들기"}</div>
+      <button class="modal-close" id="modal-close">${iconSvg("X", 20)}</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">이름<span class="req">*</span></label>
+        <input class="form-input" id="gf-name" placeholder="예: 코딩 전문가" value="${escHtml(editing?.name || "")}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">설명</label>
+        <input class="form-input" id="gf-desc" placeholder="이 GPT가 무엇을 하는지 간단히 설명하세요" value="${escHtml(editing?.description || "")}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">시스템 프롬프트<span class="req">*</span></label>
+        <textarea class="form-input form-textarea" id="gf-sys" placeholder="AI의 역할과 성격을 정의하세요">${escHtml(editing?.system_prompt || "")}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">지침<span class="req">*</span></label>
+        <textarea class="form-input form-textarea" id="gf-inst" placeholder="구체적인 행동 지침을 작성하세요">${escHtml(editing?.instructions || "")}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">아바타 URL (선택)</label>
+        <input class="form-input" id="gf-avatar" type="url" placeholder="https://example.com/avatar.png" value="${escHtml(editing?.avatar_url || "")}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">파일 첨부 (선택)</label>
+        <input type="file" id="gf-file-input" multiple style="display:none;">
+        <div class="upload-zone" id="upload-zone">${iconSvg("Upload", 24)}<div class="upload-zone-text">파일을 클릭하여 업로드</div><div class="upload-zone-hint">텍스트·코드·이미지·PDF 등 모든 형식 지원</div></div>
+        <div class="file-list" id="gf-file-list"></div>
+      </div>
+      <div class="form-group">
+        <div class="checkbox-row">
+          <input type="checkbox" id="gf-public" ${editing?.is_public ? "checked" : ""}>
+          <label for="gf-public" style="font-size:13px;">이 GPT를 다른 사용자와 공유</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-cancel" id="modal-cancel">취소</button>
+        <button class="btn-save" id="modal-save">${editing ? "수정" : "생성"}</button>
+      </div>
+    </div>
+  </div>`;
 
         gptModalPendingDeletes = [];
         // 편집 시: DB에서 기존 파일 로드
@@ -3703,7 +3312,7 @@
       // 🌐  브라우저 오버레이
       // ═══════════════════════════════════════════════════════════════
       const BROWSER_HOME_URL =
-        "https://cdn-ai.onspace.ai/onspace/project/code/latest/9bhrqx-Nw9ZCUgPPX8cdNTXTVcKj5-1786360193440101/index.html?_v=1786360199";
+        "GoldFireDragonBrowser.html";
 
       function openBrowserOverlay() {
         const brow = document.getElementById("brow");
