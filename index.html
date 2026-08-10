@@ -3745,8 +3745,54 @@
               const brow = document.getElementById("brow");
               if (!handle || !brow) return;
               let dragging = false;
+              const isLandscape = () => window.matchMedia('(orientation: landscape)').matches;
               const apply = (clientX, clientY) => {
-<!DOCTYPE html>
+                if (isLandscape()) {
+                  const rect = document.body.getBoundingClientRect();
+                  let w = rect.right - clientX;
+                  w = Math.max(120, Math.min(w, rect.width - 120));
+                  brow.style.width = w + 'px';
+                } else {
+                  let h = clientY;
+                  h = Math.max(80, Math.min(h, window.innerHeight - 80));
+                  brow.style.height = h + 'px';
+                }
+              };
+              handle.addEventListener('pointerdown', (e) => {
+                dragging = true;
+                brow.classList.add('resizing');
+                handle.setPointerCapture(e.pointerId);
+              });
+              handle.addEventListener('pointermove', (e) => {
+                if (!dragging) return;
+                apply(e.clientX, e.clientY);
+              });
+              handle.addEventListener('pointerup', () => {
+                dragging = false;
+                brow.classList.remove('resizing');
+              });
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // 🚀  BOOT
+            // ═══════════════════════════════════════════════════════════════
+            bindBrowserOverlay();
+
+            supabaseReady.then(async () => {
+              clearTimeout(window.__bootWatchdog);
+              await initAuth();
+              if (S.view === 'chat') {
+                await loadUserData();
+              }
+              setState({ loading: false });
+            }).catch((err) => {
+              console.error('Boot error:', err);
+              clearTimeout(window.__bootWatchdog);
+              setState({ loading: false, view: 'auth' });
+            });
+          </script>
+        </body>
+      </html>
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
