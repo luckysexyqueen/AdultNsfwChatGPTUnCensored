@@ -10,7 +10,7 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon.png" />
     <!-- Supabase -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Supabase removed for local mode -->
     <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
          파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
     <script
@@ -1478,79 +1478,182 @@
         return await askAnonKeyViaModal();
       }
 
-      // ═══════════════════════════════════════════════════════════════
-      // 🗄️  SUPABASE CLIENT (CDN 로딩 실패 + 키 미설정에 대비한 방어적 초기화)
-      //     anon key 해석이 끝날 때까지 기다린 뒤 클라이언트를 생성한다.
-      //     BOOT 시퀀스는 아래 supabaseReady를 await한 뒤 진행된다.
-      // ═══════════════════════════════════════════════════════════════
-      let sb = null;
-      const supabaseReady = (async () => {
-        try {
-          const anonKey = await resolveAnonKey();
-          if (typeof supabase === "undefined" || !supabase.createClient) {
-            throw new Error("Supabase SDK가 로드되지 않았습니다 (CDN 차단/네트워크 문제 가능성)");
-          }
-          sb = supabase.createClient(SUPABASE_URL, anonKey, {
-            auth: { persistSession: true, autoRefreshToken: true },
-          });
-        } catch (e) {
-          console.error("Supabase client init failed:", e);
-          // sb가 null이면 아래 모든 sb.* 호출이 실패하므로,
-          // 최소한의 no-op 더미 클라이언트로 대체해 스크립트 전체가 죽지 않게 한다.
-          const alwaysFail = () => Promise.resolve({ data: null, error: new Error("Supabase unavailable") });
-          const chain = () => {
-            const obj = {
-              select: () => chain(),
-              eq: () => chain(),
-              or: () => chain(),
-              order: () => chain(),
-              insert: () => chain(),
-              update: () => chain(),
-              delete: () => chain(),
-              single: () => alwaysFail(),
-              then: (resolve) => resolve({ data: [], error: new Error("Supabase unavailable") }),
-            };
-            return obj;
-          };
-          sb = {
-            auth: {
-              getSession: () => Promise.resolve({ data: { session: null } }),
-              onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
-              signInWithPassword: () => alwaysFail(),
-              signInWithOtp: () => alwaysFail(),
-              verifyOtp: () => alwaysFail(),
-              updateUser: () => alwaysFail(),
-              signOut: () => Promise.resolve({ error: null }),
-            },
-            from: () => chain(),
-            storage: {
-              from: () => ({
-                upload: () => alwaysFail(),
-                createSignedUrl: () => alwaysFail(),
-              }),
-            },
-          };
-        }
 
-        // (기존에 최상위에서 바로 등록되던 인증 상태 리스너 — sb가 준비된 직후로 이동)
-        sb.auth.onAuthStateChange((event, session) => {
-          if (event === "SIGNED_IN" && session?.user) {
-            setState({ user: mapUser(session.user), view: "chat" });
-            loadUserData();
-          } else if (event === "SIGNED_OUT") {
-            setState({
-              user: null,
-              view: "auth",
-              conversations: [],
-              messages: [],
-              customGPTs: [],
-              currentConvId: null,
-              currentGPT: null,
-            });
-          } else if (event === "TOKEN_REFRESHED" && session?.user) {
-            setState({ user: mapUser(session.user) });
+      // ═══════════════════════════════════════════════════════════════
+      // 💾  LOCAL STORAGE PROVIDER (Supabase Mock - Robust Version)
+      // ═══════════════════════════════════════════════════════════════
+      const LocalDB = {
+        async get(store) {
+          return (await localforage.getItem(store)) || [];
+        },
+        async save(store, data) {
+          await localforage.setItem(store, data);
+        }
+      };
+
+      let sb;
+      const supabaseReady = (async function initLocalSB() {
+        window.addEventListener('online', () => setState({ isOnline: true }));
+        window.addEventListener('offline', () => setState({ isOnline: false }));
+
+        const chain = (table) => {
+          let filters = [];
+          let sortCol = 'created_at';
+          let ascending = false;
+
+          const p = {
+            select: () => p,
+            insert: (row) => ({
+              select: () => ({
+                single: () => ({
+                  then: async (resolve) => {
+                    const data = await LocalDB.get(table);
+                    const newRow = { 
+                        id: row.id || ('id-' + Date.now() + '-' + Math.random().toString(36).slice(2)), 
+                        created_at: new Date().toISOString(), 
+                        updated_at: new Date().toISOString(),
+                        ...row 
+                    };
+                    data.unshift(newRow);
+                    await LocalDB.save(table, data);
+                    if (resolve) resolve({ data: newRow, error: null });
+                    return { data: newRow, error: null };
+                  }
+                })
+              })
+            }),
+            update: (updates) => ({
+              eq: (col, val) => ({
+                then: async (resolve) => {
+                  const data = await LocalDB.get(table);
+                  const idx = data.findIndex(x => x[col] === val);
+                  if (idx !== -1) {
+                    data[idx] = { ...data[idx], ...updates, updated_at: new Date().toISOString() };
+                    await LocalDB.save(table, data);
+                    if (resolve) resolve({ data: data[idx], error: null });
+                    return { data: data[idx], error: null };
+                  } else {
+                    if (resolve) resolve({ data: null, error: { message: "Not found" } });
+                    return { data: null, error: { message: "Not found" } };
+                  }
+                }
+              })
+            }),
+            delete: () => ({
+              eq: (col, val) => ({
+                then: async (resolve) => {
+                  const data = await LocalDB.get(table);
+                  const filtered = data.filter(x => x[col] !== val);
+                  await LocalDB.save(table, filtered);
+                  if (resolve) resolve({ error: null });
+                  return { error: null };
+                }
+              })
+            }),
+            eq: (k, v) => {
+              filters.push({ k, v });
+              return p;
+            },
+            or: (query) => {
+              filters.push({ or: query });
+              return p;
+            },
+            order: (col, opts) => {
+              sortCol = col;
+              ascending = opts?.ascending || false;
+              return p;
+            },
+            single: () => ({
+                then: async (resolve) => {
+                    const { data, error } = await p.then(r => r);
+                    const res = { data: data ? data[0] : null, error };
+                    if (resolve) resolve(res);
+                    return res;
+                }
+            }),
+            then: async (resolve) => {
+              let data = await LocalDB.get(table);
+              for (const f of filters) {
+                if (f.or) {
+                    data = data.filter(x => x.user_id === S.user?.id || x.is_public === true);
+                } else {
+                    data = data.filter(x => x[f.k] === f.v);
+                }
+              }
+              data.sort((a, b) => {
+                const va = a[sortCol], vb = b[sortCol];
+                if (va < vb) return ascending ? -1 : 1;
+                if (va > vb) return ascending ? 1 : -1;
+                return 0;
+              });
+              if (resolve) resolve({ data, error: null });
+              return { data, error: null };
+            }
+          };
+          return p;
+        };
+
+        sb = {
+          auth: {
+            getSession: async () => {
+              const user = await localforage.getItem('local_user');
+              return { data: { session: user ? { user, access_token: 'local-token' } : null } };
+            },
+            onAuthStateChange: (cb) => {
+                return { data: { subscription: { unsubscribe() {} } } };
+            },
+            signInWithPassword: async ({email}) => {
+                const user = { id: 'u-' + Date.now(), email, user_metadata: { username: email.split('@')[0] } };
+                await localforage.setItem('local_user', user);
+                return { data: { user }, error: null };
+            },
+            signInWithOtp: () => Promise.resolve({ error: null }),
+            verifyOtp: async ({email}) => {
+                const user = { id: 'u-' + Date.now(), email, user_metadata: { username: email.split('@')[0] } };
+                await localforage.setItem('local_user', user);
+                return { data: { user }, error: null };
+            },
+            updateUser: async ({data}) => {
+                const user = await localforage.getItem('local_user');
+                const newUser = { ...user, user_metadata: { ...user.user_metadata, ...data } };
+                await localforage.setItem('local_user', newUser);
+                return { data: { user: newUser }, error: null };
+            },
+            signOut: async () => {
+              await localforage.removeItem('local_user');
+              return { error: null };
+            },
+          },
+          from: (table) => chain(table),
+          storage: {
+            from: (bucket) => ({
+              upload: async (path, file) => {
+                const id = 'storage-' + path.replace(/[^a-zA-Z0-9]/g, '_');
+                await localforage.setItem(id, file);
+                return { data: { path }, error: null };
+              },
+              remove: async (paths) => {
+                for (const p of paths) {
+                    const id = 'storage-' + p.replace(/[^a-zA-Z0-9]/g, '_');
+                    await localforage.removeItem(id);
+                }
+                return { error: null };
+              },
+              createSignedUrl: async (path) => {
+                const id = 'storage-' + path.replace(/[^a-zA-Z0-9]/g, '_');
+                const blob = await localforage.getItem(id);
+                return { data: { signedUrl: blob ? URL.createObjectURL(blob) : '' }, error: null };
+              }
+            })
           }
-        });
+        };
+        
+        // Initial Auth Check
+        const { data: { session } } = await sb.auth.getSession();
+        if (session?.user) {
+            setState({ user: mapUser(session.user), view: 'chat' });
+            loadUserData();
+        }
       })();
 
       // ═══════════════════════════════════════════════════════════════
@@ -2008,7 +2111,7 @@
         const trimmed = content.trim();
         if (!trimmed && filesToSend.length === 0) return;
         if (S.isStreaming) return;
-        if (!S.isOnline) {
+        if (false) { // Allow offline message saving
           toast("오프라인 상태입니다", "error");
           return;
         }
@@ -2016,7 +2119,7 @@
         let convId = S.currentConvId;
         let savedMsgId = null;
         const tempId = `temp-${Date.now()}`;
-        const isGuest = false;
+        const isGuest = true;
 
         // Determine system prompt / instructions
         let sysPrompt = S.currentGPT?.system_prompt;
@@ -2121,6 +2224,10 @@
             data: { session },
           } = await sb.auth.getSession();
           const token = session?.access_token || (isGuest ? "guest-token" : "anon");
+          
+          if (!S.isOnline) {
+            throw new Error("오프라인 상태입니다. 메시지는 로컬에 저장되었지만 AI 응답을 받으려면 인터넷 연결이 필요합니다.");
+          }
           const resp = await fetch(EDGE_FUNCTION_URL, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -2562,7 +2669,7 @@
           renderAuthExtra();
           return;
         }
-        setState({ user: mapUser(data.user), view: "chat" });
+        setState({ user: mapUser(data.user), view: "chat" }); await loadUserData();
         authState.loading = false;
         await loadUserData();
       }
@@ -2577,14 +2684,23 @@
           renderAuthExtra();
           return;
         }
-        setState({ user: mapUser(data.user), view: "chat" });
+        setState({ user: mapUser(data.user), view: "chat" }); await loadUserData();
         authState.loading = false;
         await loadUserData();
       }
 
+      
       async function doGuestLogin() {
+        const user = { id: "guest-" + Math.random().toString(36).substr(2, 9), email: "guest@example.com", username: "게스트" };
+        await localforage.setItem('local_user', user);
         setState({
-          user: { id: "guest-" + Math.random().toString(36).substr(2, 9), email: "guest@example.com", username: "게스트" },
+          user: user,
+          view: "chat",
+        });
+        toast("게스트로 로그인했습니다", "success");
+        await loadUserData();
+      }
+,
           view: "chat",
         });
         toast("게스트로 로그인했습니다", "success");
