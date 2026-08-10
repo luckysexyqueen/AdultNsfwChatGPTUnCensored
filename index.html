@@ -3746,77 +3746,661 @@
               if (!handle || !brow) return;
               let dragging = false;
               const apply = (clientX, clientY) => {
-                if (browserOrientationQuery.matches) {
-                  const vw = window.innerWidth;
-                  const min = vw * 0.2;
-                  const max = vw * 0.8;
-                  const w = Math.max(min, Math.min(max, clientX));
-                  brow.style.width = w + "px";
-                } else {
-                  const vh = window.innerHeight;
-                  const min = vh * 0.18;
-                  const max = vh * 0.8;
-                  const h = Math.max(min, Math.min(max, clientY));
-                  brow.style.height = h + "px";
-                }
-              };
-              handle.addEventListener("pointerdown", (e) => {
-                if (!brow.classList.contains("open")) return;
-                dragging = true;
-                brow.classList.add("resizing");
-                handle.setPointerCapture(e.pointerId);
-              });
-              handle.addEventListener("pointermove", (e) => {
-                if (!dragging) return;
-                apply(e.clientX, e.clientY);
-              });
-              const endDrag = () => {
-                if (!dragging) return;
-                dragging = false;
-                brow.classList.remove("resizing");
-              };
-              handle.addEventListener("pointerup", endDrag);
-              handle.addEventListener("pointercancel", endDrag);
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#10a37f" />
+    <meta name="description" content="제한 없는 AI 채팅 애플리케이션" />
+    <title>AI Chat - 무제한 대화</title>
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <!-- Supabase -->
+    <!-- Supabase removed for local mode -->
+    <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
+         파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
+    <script
+      src="/env-config.js"
+      onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
+    ></script>
+    <!-- LocalForage: CDN 제거, 네이티브 IndexedDB 기반 자체 구현으로 대체 (오프라인/WebView 안전) -->
+    <script>
+      /* ═══════════════════════════════════════════════════════════════
+         🗄️  NATIVE INDEXEDDB POLYFILL (localforage 대체)
+         - 외부 CDN 의존성 완전 제거 → 오프라인/APK WebView에서도 100% 동작
+         - localforage와 동일한 API 제공: getItem/setItem/removeItem/iterate/ready/createInstance
+         - 전역 window.localforage 로 노출하여 기존 코드 수정 없이 호환
+         ═══════════════════════════════════════════════════════════════ */
+      (function () {
+        "use strict";
+
+        function openDb(dbName, storeName) {
+          return new Promise((resolve, reject) => {
+            if (!window.indexedDB) {
+              reject(new Error("IndexedDB unsupported"));
+              return;
             }
-
-            // ═══════════════════════════════════════════════════════════════
-            // 🚀  BOOT
-            // ═══════════════════════════════════════════════════════════════
-            (async () => {
-              await supabaseReady; // anon key 해석 + Supabase 클라이언트 준비를 기다린다 (필요 시 입력폼 대기)
-              bindBrowserOverlay();
-              try {
-                try {
-                  await Promise.all([
-                    blobStore.ready(),
-                    metaStore.ready(),
-                    msgFileStore.ready(),
-                    convStore.ready(),
-                    msgStore.ready(),
-                  ]);
-                } catch (e) {
-                  console.warn("LocalForage init:", e);
-                }
-
-                await withTimeout(initAuth(), 6000, undefined);
-                if (S.user) {
-                  await withTimeout(loadUserData(), 8000, undefined);
-                }
-              } catch (e) {
-                console.warn("Boot error:", e);
-              } finally {
-                if (S.loading) setState({ loading: false, view: S.user ? "chat" : "auth" });
-                render();
-                document.getElementById("loading-screen").classList.add("hidden");
+            const req = indexedDB.open(dbName, 1);
+            req.onupgradeneeded = (e) => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains(storeName)) {
+                db.createObjectStore(storeName);
               }
-            })();
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error || new Error("IndexedDB open failed"));
+          });
+        }
 
-            // PWA Service Worker
-            if ("serviceWorker" in navigator) {
-              window.addEventListener("load", () => {
-                navigator.serviceWorker.register("/sw.js").catch(() => {});
+        // 메모리 폴백 (IndexedDB 자체를 못 쓰는 극단적 환경 대비)
+        function memoryInstance() {
+          const mem = new Map();
+          return {
+            async getItem(key) {
+              return mem.has(key) ? mem.get(key) : null;
+            },
+            async setItem(key, value) {
+              mem.set(key, value);
+              return value;
+            },
+            async removeItem(key) {
+              mem.delete(key);
+            },
+            async clear() {
+              mem.clear();
+            },
+            async keys() {
+              return Array.from(mem.keys());
+            },
+            async iterate(cb) {
+              let i = 0;
+              for (const [k, v] of mem.entries()) {
+                const res = cb(v, k, ++i);
+                if (res !== undefined) return res;
+              }
+            },
+            async ready() {
+              return true;
+            },
+          };
+        }
+
+        function createInstance(opts) {
+          opts = opts || {};
+          const dbName = opts.name || "localforage";
+          const storeName = opts.storeName || "keyvaluepairs";
+          let dbPromise = null;
+          let failed = false;
+
+          function getDb() {
+            if (failed) return Promise.reject(new Error("indexeddb-unavailable"));
+            if (!dbPromise) {
+              dbPromise = openDb(dbName, storeName).catch((err) => {
+                failed = true;
+                console.warn("[IndexedDB] 사용 불가, 메모리 저장소로 대체:", err && err.message);
+                throw err;
               });
             }
+            return dbPromise;
+          }
+
+          const fallback = memoryInstance();
+          let useFallback = false;
+
+          function withStore(mode, fn) {
+            if (useFallback) return fn(null);
+            return getDb()
+              .then((db) => {
+                return new Promise((resolve, reject) => {
+                  try {
+                    const tx = db.transaction(storeName, mode);
+                    const store = tx.objectStore(storeName);
+                    const result = fn(store);
+                    tx.oncomplete = () => resolve(result && result.__val !== undefined ? result.__val : result);
+                    tx.onerror = () => reject(tx.error);
+                  } catch (err) {
+                    reject(err);
+                  }
+                });
+              })
+              .catch((err) => {
+                useFallback = true;
+                return fn(null);
+              });
+          }
+
+          return {
+            async getItem(key) {
+              if (useFallback) return fallback.getItem(key);
+              try {
+                return await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readonly");
+                      const req = tx.objectStore(storeName).get(key);
+                      req.onsuccess = () => resolve(req.result === undefined ? null : req.result);
+                      req.onerror = () => reject(req.error);
+                    }),
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.getItem(key);
+              }
+            },
+            async setItem(key, value) {
+              if (useFallback) return fallback.setItem(key, value);
+              try {
+                await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readwrite");
+                      tx.objectStore(storeName).put(value, key);
+                      tx.oncomplete = () => resolve();
+                      tx.onerror = () => reject(tx.error);
+                    }),
+                );
+                return value;
+              } catch (e) {
+                useFallback = true;
+                return fallback.setItem(key, value);
+              }
+            },
+            async removeItem(key) {
+              if (useFallback) return fallback.removeItem(key);
+              try {
+                await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readwrite");
+                      tx.objectStore(storeName).delete(key);
+                      tx.oncomplete = () => resolve();
+                      tx.onerror = () => reject(tx.error);
+                    }),
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.removeItem(key);
+              }
+            },
+            async clear() {
+              if (useFallback) return fallback.clear();
+              try {
+                await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readwrite");
+                      tx.objectStore(storeName).clear();
+                      tx.oncomplete = () => resolve();
+                      tx.onerror = () => reject(tx.error);
+                    }),
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.clear();
+              }
+            },
+            async keys() {
+              if (useFallback) return fallback.keys();
+              try {
+                return await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readonly");
+                      const req = tx.objectStore(storeName).getAllKeys();
+                      req.onsuccess = () => resolve(req.result || []);
+                      req.onerror = () => reject(req.error);
+                    }),
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.keys();
+              }
+            },
+            async iterate(cb) {
+              if (useFallback) return fallback.iterate(cb);
+              try {
+                return await getDb().then(
+                  (db) =>
+                    new Promise((resolve, reject) => {
+                      const tx = db.transaction(storeName, "readonly");
+                      const store = tx.objectStore(storeName);
+                      const req = store.openCursor();
+                      let i = 0;
+                      req.onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                          const res = cb(cursor.value, cursor.key, ++i);
+                          if (res !== undefined) {
+                            resolve(res);
+                            return;
+                          }
+                          cursor.continue();
+                        } else {
+                          resolve(undefined);
+                        }
+                      };
+                      req.onerror = () => reject(req.error);
+                    }),
+                );
+              } catch (e) {
+                useFallback = true;
+                return fallback.iterate(cb);
+              }
+            },
+            async ready() {
+              try {
+                await getDb();
+              } catch (e) {
+                useFallback = true;
+              }
+              return true;
+            },
+          };
+        }
+
+        // 기본(default) 인스턴스 — localforage.getItem(...) 형태의 전역 직접 호출 호환용
+        const defaultInstance = createInstance({ name: "localforage", storeName: "keyvaluepairs" });
+
+        window.localforage = {
+          getItem: (k) => defaultInstance.getItem(k),
+          setItem: (k, v) => defaultInstance.setItem(k, v),
+          removeItem: (k) => defaultInstance.removeItem(k),
+          clear: () => defaultInstance.clear(),
+          keys: () => defaultInstance.keys(),
+          iterate: (cb) => defaultInstance.iterate(cb),
+          ready: () => defaultInstance.ready(),
+          createInstance: createInstance,
+        };
+      })();
     </script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- Font Awesome (브라우저 오버레이 아이콘용) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GoldFireDragonFullUnCensoredGoogleProxyInAndroidWebBrowserAppHomePage@refs/heads/codespace-super-robot-xrwp9jp647v62v74v/fonts/gamefont.css"
+    />
+
+    <style>
+      @font-face {
+        font-family: "acutehoney";
+        src: url("https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser/fonts/a%ED%81%90%ED%8B%B0%ED%97%88%EB%8B%88.woff")
+          format("woff");
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+      *,
+      *::before,
+      *::after,
+      input,
+      button,
+      textarea,
+      select {
+        font-family: "acutehoney", sans-serif !important;
+      }
+    </style>
+
+    <style>
+      /* ===== RESET & BASE ===== */
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html,
+      body {
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        background: #212121;
+        color: #fff;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      #app {
+        flex: 1;
+        min-height: 0;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+      }
+
+      /* ===== VARIABLES ===== */
+      :root {
+        --bg: #212121;
+        --bg2: #2f2f2f;
+        --bg3: #343541;
+        --bg4: #40414f;
+        --border: rgba(255, 255, 255, 0.1);
+        --accent: #10a37f;
+        --accent-hover: #0d8968;
+        --text: #fff;
+        --text-muted: rgba(255, 255, 255, 0.5);
+        --text-dim: rgba(255, 255, 255, 0.25);
+        --danger: #ef4444;
+      }
+
+      /* ── 브라우저 패널 (채팅 화면과 항상 함께 보이는 분할 패널) ──
+         portrait(세로): 위/아래 반반, landscape(가로): 좌/우 반반 */
+      #brow {
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column; /* portrait 기본값: 내용 위, 핸들 아래 */
+        width: 100%;
+        height: 0;
+        min-width: 0;
+        min-height: 0;
+        background: #0a0b0f;
+        overflow: hidden;
+        transition: height 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      #brow.open {
+        height: 50vh;
+        border-bottom: 1px solid #1e1f2e;
+      }
+      #brow.resizing {
+        transition: none;
+      }
+      #brow-content {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      #brow-resize {
+        flex-shrink: 0;
+        height: 14px;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: row-resize;
+        background: #0e0f14;
+        touch-action: none;
+      }
+      #brow-resize::after {
+        content: "";
+        width: 40px;
+        height: 4px;
+        border-radius: 2px;
+        background: #3a3c4a;
+      }
+      /* landscape(가로 모드): 채팅과 브라우저를 좌우로 반반 배치 */
+      @media (orientation: landscape) {
+        body {
+          flex-direction: row;
+        }
+        #app {
+          min-width: 0;
+        }
+        #brow {
+          flex-direction: row; /* 내용 왼쪽, 핸들 오른쪽 */
+          width: 0;
+          height: 100%;
+          transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        #brow.open {
+          width: 50vw;
+          height: 100%;
+          border-bottom: none;
+          border-right: 1px solid #1e1f2e;
+        }
+        #brow-resize {
+          width: 14px;
+          height: 100%;
+          cursor: col-resize;
+        }
+        #brow-resize::after {
+          width: 4px;
+          height: 40px;
+        }
+      }
+      #brow-tb {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: #0e0f14;
+        border-bottom: 1px solid #1e1f2e;
+      }
+      #brow-url {
+        flex: 1;
+        background: #16171f;
+        border: 1px solid #2d2f3e;
+        border-radius: 7px;
+        padding: 5px 10px;
+        font-size: 11px;
+        color: #9ca3af;
+        font-family: "JetBrains Mono", monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #brow-iframe {
+        flex: 1;
+        width: 100%;
+        border: none;
+      }
+
+      /* ===== SCROLLBAR ===== */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.25);
+      }
+
+      /* ===== LAYOUT ===== */
+      #main-layout {
+        display: flex;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      /* ===== SIDEBAR ===== */
+      #sidebar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 260px;
+        min-width: 260px;
+        background: var(--bg2);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        z-index: 300;
+        transform: translateX(-100%);
+        transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 2px 0 24px rgba(0, 0, 0, 0.4);
+      }
+      #sidebar.open {
+        transform: translateX(0);
+      }
+      #sidebar-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 290;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      #sidebar-backdrop.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .sidebar-toggle-btn {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--bg3);
+        border: 1px solid var(--border);
+        color: #fff;
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .sidebar-toggle-btn:hover {
+        background: var(--bg4);
+      }
+      .sidebar-toggle-btn.active {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      .sidebar-top {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .btn-new-chat {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 14px;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.15s;
+      }
+      .btn-new-chat:hover {
+        background: var(--bg3);
+      }
+      .sidebar-section {
+        flex: 1;
+        overflow-y: auto;
+        padding: 8px;
+      }
+      .sidebar-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        padding: 8px 10px 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .conv-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.15s;
+        position: relative;
+      }
+      .conv-item:hover {
+        background: var(--bg3);
+      }
+      .conv-item.active {
+        background: var(--bg4);
+      }
+      .conv-item-title {
+        flex: 1;
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .conv-item-del {
+        opacity: 0;
+        background: none;
+        border: none;
+        color: var(--danger);
+        cursor: pointer;
+        padding: 2px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+      .conv-item:hover .conv-item-del {
+        opacity: 1;
+      }
+
+      /* GPT List */
+      .gpt-section {
+        border-bottom: 1px solid var(--border);
+        padding: 8px;
+      }
+      .gpt-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 10px;
+      }
+      .gpt-header-title {
+        font-size: 14px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .btn-create-gpt {
+        font-size: 12px;
+        padding: 4px 10px;
+        background: var(--accent);
+        border: none;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+      }
+      .btn-create-gpt:hover {
+        background: var(--accent-hover);
+      }
+      .gpt-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.15s;
+        position: relative;
+      }
+      .gpt-item:hover {
+        background: var(--bg3);
+      }
+      .gpt-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #8b5cf6, #ec4899);
+        display: flex;
+        align-items: center;
+        justify
+  </script>
   </body>
 </html>
