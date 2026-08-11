@@ -6,8 +6,8 @@
   "main": "server.js",
   "scripts": {
     "dev": "vite",
-    "build": "npm run build",
-    "build:dev": "npm run build --mode development",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1",
