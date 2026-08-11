@@ -20,13 +20,12 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install
+        uses: dudeofawesome/npm-install@v1.0.0
+        with:
+          package-dir-path: .
 
-      - name: Build with Vite directly
-        run: npx vite build
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Npm build to gh-pages
+        uses: diy-pwa/npm-build-2-gh-pages@v1.13
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: .
+          dist_folder: .
