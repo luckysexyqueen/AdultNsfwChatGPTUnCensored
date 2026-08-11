@@ -24,6 +24,17 @@ jobs:
         with:
           package-dir-path: .
 
+      - name: Install Vite
+        run: npm install vite --save-dev
+
+      - name: Set up Vite & Build with npx
+        run: npx vite build
+
+      - name: Configure Git Credentials for Stability
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Npm build to gh-pages
         uses: diy-pwa/npm-build-2-gh-pages@v1.13
         with:
