@@ -1,0 +1,2535 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>골드파이어드래곤브라우저 360 XR &amp; HDR (Soft - Full Bypass Edition)</title>
+
+    <!-- 메타 태그 모음 -->
+    <meta name="robots" content="index, follow" />
+    <meta name="googlebot" content="nosnippet, noarchive" />
+    <meta name="toolbar" content="true" />
+    <meta name="full-color-rgb-ultra-hdr" content="true" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover"
+    />
+    <meta name="desktop-landscape" content="width=1500, height=900, dpi=135" />
+    <meta name="desktop-portrait" content="width=900, height=1500, dpi=135" />
+    <meta name="mobile-landscape" content="width=1500, height=900, dpi=135" />
+    <meta name="mobile-portrait" content="width=900, height=1500, dpi=135" />
+    <meta name="DESKTOPMODE" content="force true" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="geo.region" content="JP" />
+    <meta name="geo.country" content="JP" />
+    <meta name="geo.placename" content="Tokyo" />
+    <meta name="HandheldFriendly" content="true" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta http-equiv="x-rim-auto-match" content="none" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="MobileOptimized" content="1359" />
+
+    <script>
+      /**
+       * 360 VR Browser & Video Player with Oculus Eye Tracking & Controller Support
+       * Supports: Oculus Quest (Eye Tracking + Controllers), Mobile (Touch), Desktop (Mouse)
+       */
+
+      (function () {
+        if (window.__VR_360_ENHANCED__) return;
+        window.__VR_360_ENHANCED__ = true;
+
+        console.log("🥽 360 VR Enhanced Patch Loading...");
+
+        // UI Update Helper
+        const updateUI = (id, text) => {
+          const el = document.getElementById(id);
+          if (el) el.innerText = text;
+        };
+
+        // Load Three.js
+        const loadThreeJS = () => {
+          return new Promise((resolve) => {
+            if (window.THREE) {
+              resolve();
+              return;
+            }
+            const script = document.createElement("script");
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+            script.onload = resolve;
+            document.head.appendChild(script);
+          });
+        };
+
+        // VR State Management
+        const vrState = {
+          isActive: false,
+          mode: "desktop",
+          scene: null,
+          camera: null,
+          renderer: null,
+          sphere: null,
+          videoElement: null,
+          rotation: { lon: 0, lat: 0 },
+          isUserInteracting: false,
+          pointerStart: { x: 0, y: 0 },
+          xrSession: null,
+          eyeTracking: null,
+        };
+
+        // Detect Device Type
+        const detectDevice = () => {
+          const ua = navigator.userAgent.toLowerCase();
+          if (ua.includes("oculus") || ua.includes("quest")) {
+            vrState.mode = "oculus";
+            updateUI("device-info", "Oculus Quest");
+          } else if (ua.includes("mobile") || ua.includes("android")) {
+            vrState.mode = "mobile";
+            updateUI("device-info", "Android Mobile");
+          } else {
+            vrState.mode = "desktop";
+            updateUI("device-info", "Desktop PC");
+          }
+        };
+
+        // Initialize WebXR for Oculus
+        const initWebXR = async () => {
+          if (!navigator.xr) return;
+          try {
+            const supported = await navigator.xr.isSessionSupported("immersive-vr");
+            if (supported) {
+              const vrBtn = document.createElement("button");
+              vrBtn.innerHTML = "🥽 ENTER VR";
+              vrBtn.style.cssText = `
+                    position: fixed; bottom: 70px; right: 20px; z-index: 99999;
+                    padding: 12px 20px; background: rgba(0,0,0,0.8); color: white;
+                    border: 2px solid #00ff00; border-radius: 8px; font-weight: bold;
+                    cursor: pointer; font-size: 14px;
+                `;
+              vrBtn.onclick = async () => {
+                try {
+                  vrState.xrSession = await navigator.xr.requestSession("immersive-vr", {
+                    requiredFeatures: ["local"],
+                    optionalFeatures: ["eye-tracking", "dom-overlay"],
+                    domOverlay: { root: document.body },
+                  });
+                  vrBtn.innerHTML = "🥽 EXIT VR";
+                  vrBtn.onclick = () => vrState.xrSession.end();
+                } catch (e) {
+                  console.error(e);
+                }
+              };
+              document.body.appendChild(vrBtn);
+            }
+          } catch (e) {
+            console.warn(e);
+          }
+        };
+
+        // Initialize 360 View
+        const init360View = async () => {
+          await loadThreeJS();
+
+          vrState.scene = new THREE.Scene();
+          vrState.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+          vrState.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+          vrState.renderer.setSize(window.innerWidth, window.innerHeight);
+          vrState.renderer.setPixelRatio(window.devicePixelRatio);
+          vrState.renderer.xr.enabled = true;
+          document.body.appendChild(vrState.renderer.domElement);
+
+          Object.assign(vrState.renderer.domElement.style, {
+            position: "fixed",
+            top: "0",
+            left: "0",
+            zIndex: "99998",
+            width: "100%",
+            height: "100%",
+            display: "none",
+          });
+
+          const geometry = new THREE.SphereGeometry(500, 60, 40);
+          geometry.scale(-1, 1, 1);
+
+          vrState.videoElement = document.querySelector("video");
+          const texture = new THREE.VideoTexture(vrState.videoElement);
+          const material = new THREE.MeshBasicMaterial({ map: texture });
+          vrState.sphere = new THREE.Mesh(geometry, material);
+          vrState.scene.add(vrState.sphere);
+
+          vrState.camera.position.set(0, 0, 0.1);
+
+          setupInputHandlers();
+          setupGyroscope();
+          animate();
+          createVRButton();
+          await initWebXR();
+        };
+
+        // Setup Gyroscope
+        const setupGyroscope = () => {
+          if (window.DeviceOrientationEvent) {
+            updateUI("gyro-status", "활성화 가능");
+            const handleOrientation = (event) => {
+              if (!vrState.isActive || vrState.isUserInteracting) return;
+              let lon, lat;
+              if (window.orientation === 90 || window.orientation === -90) {
+                lon = event.alpha + event.beta;
+                lat = window.orientation === 90 ? event.gamma : -event.gamma;
+              } else {
+                lon = event.alpha;
+                lat = event.beta - 90;
+              }
+              if (lon !== undefined && lat !== undefined) {
+                vrState.rotation.lon = lon;
+                vrState.rotation.lat = lat;
+                updateUI("gyro-status", "작동 중");
+              }
+            };
+            window.addEventListener("deviceorientation", handleOrientation, true);
+          }
+        };
+
+        // Setup Input Handlers
+        const setupInputHandlers = () => {
+          const onPointerDown = (e) => {
+            vrState.isUserInteracting = true;
+            vrState.pointerStart.x = e.clientX || e.touches?.[0]?.clientX || 0;
+            vrState.pointerStart.y = e.clientY || e.touches?.[0]?.clientY || 0;
+            if (vrState.videoElement) vrState.videoElement.play();
+          };
+          const onPointerMove = (e) => {
+            if (!vrState.isUserInteracting) return;
+            const x = e.clientX || e.touches?.[0]?.clientX || 0;
+            const y = e.clientY || e.touches?.[0]?.clientY || 0;
+            vrState.rotation.lon += (vrState.pointerStart.x - x) * 0.1;
+            vrState.rotation.lat += (y - vrState.pointerStart.y) * 0.1;
+            vrState.pointerStart.x = x;
+            vrState.pointerStart.y = y;
+          };
+          const onPointerUp = () => (vrState.isUserInteracting = false);
+
+          document.addEventListener("mousedown", onPointerDown);
+          document.addEventListener("mousemove", onPointerMove);
+          document.addEventListener("mouseup", onPointerUp);
+          document.addEventListener("touchstart", onPointerDown);
+          document.addEventListener("touchmove", onPointerMove);
+          document.addEventListener("touchend", onPointerUp);
+
+          const gamepadLoop = () => {
+            const gps = navigator.getGamepads();
+            for (let gp of gps) {
+              if (gp && gp.axes.length >= 4) {
+                vrState.rotation.lon += gp.axes[2] * 2;
+                vrState.rotation.lat += gp.axes[3] * 2;
+              }
+            }
+            requestAnimationFrame(gamepadLoop);
+          };
+          gamepadLoop();
+        };
+
+        // Create VR Toggle Button
+        const createVRButton = () => {
+          const btn = document.createElement("button");
+          btn.innerHTML = "🔄 360 VIEW";
+          btn.style.cssText = `
+            position: fixed; bottom: 20px; right: 20px; z-index: 99999;
+            padding: 12px 20px; background: rgba(0,0,0,0.8); color: white;
+            border: 2px solid #00ff00; border-radius: 8px; font-weight: bold;
+            cursor: pointer; font-size: 14px;
+        `;
+          btn.onclick = () => {
+            vrState.isActive = !vrState.isActive;
+            vrState.renderer.domElement.style.display = vrState.isActive ? "block" : "none";
+            btn.innerHTML = vrState.isActive ? "❌ EXIT 360" : "🔄 360 VIEW";
+            if (vrState.isActive && vrState.videoElement) vrState.videoElement.play();
+          };
+          document.body.appendChild(btn);
+        };
+
+        const animate = () => {
+          requestAnimationFrame(animate);
+          vrState.rotation.lat = Math.max(-85, Math.min(85, vrState.rotation.lat));
+          const phi = THREE.MathUtils.degToRad(90 - vrState.rotation.lat);
+          const theta = THREE.MathUtils.degToRad(vrState.rotation.lon);
+          const target = new THREE.Vector3(
+            500 * Math.sin(phi) * Math.cos(theta),
+            500 * Math.cos(phi),
+            500 * Math.sin(phi) * Math.sin(theta),
+          );
+          vrState.camera.lookAt(target);
+          vrState.renderer.render(vrState.scene, vrState.camera);
+        };
+
+        window.addEventListener("resize", () => {
+          if (vrState.camera && vrState.renderer) {
+            vrState.camera.aspect = window.innerWidth / window.innerHeight;
+            vrState.camera.updateProjectionMatrix();
+            vrState.renderer.setSize(window.innerWidth, window.innerHeight);
+          }
+        });
+
+        detectDevice();
+        init360View().catch(console.error);
+      })();
+    </script>
+
+    <title>360도 가상 공간 변환기</title>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #000;
+      }
+    </style>
+    <!-- Three.js 코어 라이브러리 CDN 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "acutehoney";
+        src: url("https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser/fonts/a%ED%81%90%ED%8B%B0%ED%97%88%EB%8B%88.woff")
+          format("woff");
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+      *,
+      *::before,
+      *::after,
+      input,
+      button,
+      textarea,
+      select {
+        font-family: "acutehoney", sans-serif !important;
+      }
+    </style>
+
+    <!-- 360 VR Ultimate Engine v3 (2D to 360 Immersive Enhanced) -->
+    <script>
+      (function () {
+        window.GFD_VR = {
+          active: false,
+          scene: null,
+          camera: null,
+          renderer: null,
+          videoTexture: null,
+          currentVideo: null,
+          lon: 0,
+          lat: 0,
+          isInteracting: false,
+          pointerStart: { x: 0, y: 0 },
+          mode: "immersive", // 'immersive' (stretched) or 'cinema' (curved screen)
+        };
+
+        // 360 VR 엔진 초기화 및 실행
+        window.initGFDVR = function (videoEl, isNative360 = false) {
+          if (window.GFD_VR.active && window.GFD_VR.currentVideo === videoEl) return;
+
+          if (window.GFD_VR.renderer) {
+            window.GFD_VR.renderer.domElement.remove();
+          }
+
+          const container = document.createElement("div");
+          container.id = "gfd-vr-canvas-container";
+          Object.assign(container.style, {
+            position: "fixed",
+            top: "0",
+            left: "0",
+            width: "100vw",
+            height: "100vh",
+            zIndex: "9999998",
+            backgroundColor: "#000",
+            display: "block",
+          });
+          document.body.appendChild(container);
+
+          const scene = new THREE.Scene();
+          const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 2000);
+          camera.target = new THREE.Vector3(0, 0, 0);
+
+          // 일반 영상도 360도 둘러보기가 가능하도록 구체(Sphere) 지오메트리 생성
+          // 2D 영상의 경우도 구체 내부에 매핑하여 사용자가 고개를 돌려 영상을 볼 수 있게 함
+          const geometry = new THREE.SphereGeometry(500, 120, 80);
+          geometry.scale(-1, 1, 1);
+
+          const texture = new THREE.VideoTexture(videoEl);
+          texture.minFilter = THREE.LinearFilter;
+          texture.magFilter = THREE.LinearFilter;
+
+          // 일반 영상을 360도 공간에 최적화하여 배치
+          if (!isNative360) {
+            // 일반 영상(2D)을 360도 공간에서 더 자연스럽게 보이도록 매핑 조정
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+          }
+
+          const material = new THREE.MeshBasicMaterial({ map: texture });
+          const mesh = new THREE.Mesh(geometry, material);
+          scene.add(mesh);
+
+          const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+          renderer.setPixelRatio(window.devicePixelRatio);
+          renderer.setSize(window.innerWidth, window.innerHeight);
+          container.appendChild(renderer.domElement);
+
+          window.GFD_VR.scene = scene;
+          window.GFD_VR.camera = camera;
+          window.GFD_VR.renderer = renderer;
+          window.GFD_VR.currentVideo = videoEl;
+          window.GFD_VR.active = true;
+
+          // 원본 영상 숨김
+          try {
+            videoEl.style.visibility = "hidden";
+            videoEl.style.opacity = "0";
+          } catch (e) {}
+
+          // 인터랙션 제어
+          const onPointerDown = (e) => {
+            window.GFD_VR.isInteracting = true;
+            window.GFD_VR.pointerStart.x = e.clientX || e.touches?.[0]?.clientX;
+            window.GFD_VR.pointerStart.y = e.clientY || e.touches?.[0]?.clientY;
+          };
+          const onPointerMove = (e) => {
+            if (!window.GFD_VR.isInteracting) return;
+            const clientX = e.clientX || e.touches?.[0]?.clientX;
+            const clientY = e.clientY || e.touches?.[0]?.clientY;
+            window.GFD_VR.lon += (window.GFD_VR.pointerStart.x - clientX) * 0.2;
+            window.GFD_VR.lat += (clientY - window.GFD_VR.pointerStart.y) * 0.2;
+            window.GFD_VR.pointerStart.x = clientX;
+            window.GFD_VR.pointerStart.y = clientY;
+          };
+          const onPointerUp = () => (window.GFD_VR.isInteracting = false);
+
+          renderer.domElement.addEventListener("pointerdown", onPointerDown);
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", onPointerUp);
+          renderer.domElement.addEventListener("touchstart", onPointerDown);
+          window.addEventListener("touchmove", onPointerMove);
+          window.addEventListener("touchend", onPointerUp);
+
+          function animate() {
+            if (!window.GFD_VR.active) return;
+            requestAnimationFrame(animate);
+            window.GFD_VR.lat = Math.max(-85, Math.min(85, window.GFD_VR.lat));
+            const phi = THREE.MathUtils.degToRad(90 - window.GFD_VR.lat);
+            const theta = THREE.MathUtils.degToRad(window.GFD_VR.lon);
+            camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+            camera.target.y = 500 * Math.cos(phi);
+            camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+            camera.lookAt(camera.target);
+            renderer.render(scene, camera);
+          }
+          animate();
+
+          // 컨트롤 패널 추가
+          const controlUI = document.createElement("div");
+          Object.assign(controlUI.style, {
+            position: "fixed",
+            bottom: "20px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: "9999999",
+            display: "flex",
+            gap: "10px",
+          });
+
+          const exitBtn = document.createElement("button");
+          exitBtn.innerHTML = "❌ 일반 모드로 복귀";
+          Object.assign(exitBtn.style, {
+            padding: "12px 20px",
+            background: "rgba(220, 38, 38, 0.9)",
+            color: "white",
+            border: "none",
+            borderRadius: "30px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
+          });
+          exitBtn.onclick = () => {
+            window.GFD_VR.active = false;
+            container.remove();
+            try {
+              videoEl.style.visibility = "visible";
+              videoEl.style.opacity = "1";
+            } catch (e) {}
+          };
+
+          const resetBtn = document.createElement("button");
+          resetBtn.innerHTML = "🎯 정면 보기";
+          Object.assign(resetBtn.style, {
+            padding: "12px 20px",
+            background: "rgba(79, 70, 229, 0.9)",
+            color: "white",
+            border: "none",
+            borderRadius: "30px",
+            fontWeight: "bold",
+            cursor: "pointer",
+            boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
+          });
+          resetBtn.onclick = () => {
+            window.GFD_VR.lon = 0;
+            window.GFD_VR.lat = 0;
+          };
+
+          controlUI.appendChild(resetBtn);
+          controlUI.appendChild(exitBtn);
+          container.appendChild(controlUI);
+        };
+
+        // 실시간 모든 영상 감지 및 360도 강제 활성화 버튼 주입
+        const startVideoWatcher = () => {
+          setInterval(() => {
+            document.querySelectorAll("video").forEach((video) => {
+              if (video.dataset.gfdEnhanced) return;
+              video.dataset.gfdEnhanced = "true";
+
+              const wrapper = document.createElement("div");
+              wrapper.className = "gfd-video-wrapper";
+              Object.assign(wrapper.style, { position: "relative", display: "inline-block", width: "100%" });
+
+              video.parentNode.insertBefore(wrapper, video);
+              wrapper.appendChild(video);
+
+              const btn = document.createElement("button");
+              btn.innerHTML = '<i class="fa-solid fa-rotate"></i> 360도 둘러보기 활성화';
+              Object.assign(btn.style, {
+                position: "absolute",
+                top: "20px",
+                left: "20px",
+                zIndex: "1000",
+                padding: "10px 15px",
+                background: "linear-gradient(45deg, #a855f7, #6366f1)",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: "13px",
+                boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
+                transition: "transform 0.2s",
+              });
+              btn.onmouseover = () => (btn.style.transform = "scale(1.05)");
+              btn.onmouseout = () => (btn.style.transform = "scale(1)");
+              btn.onclick = (e) => {
+                e.preventDefault();
+                window.initGFDVR(video, false); // 일반 영상(false)으로 360도 엔진 가동
+              };
+              wrapper.appendChild(btn);
+            });
+          }, 1500);
+        };
+
+        window.convertTo360 = function (input) {
+          const video = document.createElement("video");
+          video.crossOrigin = "anonymous";
+          if (input.includes("http")) {
+            video.src = input;
+          } else {
+            window.open("https://www.google.com/search?q=" + encodeURIComponent(input) + "&tbm=vid", "_blank");
+            return;
+          }
+          video.loop = true;
+          video.play().then(() => window.initGFDVR(video, true));
+        };
+
+        startVideoWatcher();
+      })();
+    </script>
+  </head>
+  <body>
+    <script>
+      let isConverted = false;
+      let scene, camera, renderer, texture, mesh;
+      let isUserInteracting = false;
+      let lon = 0,
+        lat = 0;
+      let onPointerDownLon = 0,
+        onPointerDownLat = 0;
+      let onPointerDownPointerX = 0,
+        onPointerDownPointerY = 0;
+
+      // [인터넷 영상 자동 감지 및 VR 변환 엔진]
+      const internetVideoWatcher = setInterval(() => {
+        document.querySelectorAll("video").forEach((v) => {
+          if (v.dataset.gfdInternetReady) return;
+          v.dataset.gfdInternetReady = "true";
+
+          // 영상 위에 VR 변환 버튼 주입
+          const btn = document.createElement("button");
+          btn.innerHTML = "🥽 360 VR 변환";
+          btn.style.cssText =
+            "position: absolute; z-index: 10000; padding: 8px 15px; background: rgba(168, 85, 247, 0.9); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 12px; margin: 10px;";
+
+          // 영상의 위치에 맞게 버튼 배치
+          if (v.parentElement) {
+            v.parentElement.style.position = "relative";
+            v.parentElement.appendChild(btn);
+          } else {
+            document.body.appendChild(btn);
+          }
+
+          btn.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (typeof process360Conversion === "function") {
+              process360Conversion(v);
+            } else if (typeof initGFDVR === "function") {
+              initGFDVR(v);
+            }
+          };
+        });
+      }, 2000);
+
+      // 1. [실시간 비디오 가로채기] 재생 중인 실제 비디오 엘리먼트를 추적합니다.
+      const videoScanInterval = setInterval(() => {
+        if (isConverted) return;
+        try {
+          const targetDocument = document;
+          const activeVideos = targetDocument.querySelectorAll("video");
+
+          activeVideos.forEach((video) => {
+            if (!video.paused && video.currentTime > 0 && !isConverted) {
+              process360Conversion(video);
+            }
+          });
+        } catch (securityError) {
+          // CORS 및 도메인 보안 예외 발생 시 대기 상태 유지
+        }
+      }, 500);
+
+      // 2. 납작한 일반 평면(2D) 영상을 진짜 360도 입체 파노라마 뷰 공간으로 매핑하는 코어 엔지니어링
+      function process360Conversion(detectedVideo) {
+        isConverted = true;
+        clearInterval(videoScanInterval);
+
+        detectedVideo.style.visibility = "hidden";
+        detectedVideo.style.opacity = "0";
+
+        // Three.js 입체 공간 생성
+        scene = new THREE.Scene();
+
+        // 왜곡 없는 자연스러운 VR 환경 시야각(FOV)인 75도 설정 후 카메라 정중앙 배치
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 2000);
+        camera.target = new THREE.Vector3(0, 0, 0);
+
+        // [핵심] 일반 영상을 가상 360도 공간 구조로 확장하기 위한 고밀도 구형 지오메트리 빌드
+        const geometry = new THREE.SphereGeometry(500, 120, 80);
+        geometry.scale(-1, 1, 1); // 내부 벽면에 영상을 고르게 투사하기 위해 스케일 반전
+
+        // 사용자가 틀어놓은 실제 비디오 엘리먼트 스트림을 실시간 3D 가상 텍스처로 추출
+        texture = new THREE.VideoTexture(detectedVideo);
+
+        // 픽셀 보간법을 선형(Linear)으로 처리하여 화질 깨짐을 실시간 최소화
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+
+        // 비디오 픽셀이 파노라마 좌표계 형태로 구체 전체에 완벽히 정렬되도록 매핑 형식 지정
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+
+        // 가상 벽면에 텍스처를 적용하고 3D 매쉬 객체 생성 후 가상 세계에 띄움
+        const material = new THREE.MeshBasicMaterial({ map: texture });
+        mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+
+        // 모니터 전체 해상도를 가득 채우는 하드웨어 가속 방식의 WebGL 렌더러 생성
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // CSS 강제 제어: 원본 사이트의 복잡한 레이아웃 구조를 완벽하게 장악하여 강제 전체화면 변환
+        renderer.domElement.style.position = "fixed";
+        renderer.domElement.style.top = "0";
+        renderer.domElement.style.left = "0";
+        renderer.domElement.style.width = "100vw";
+        renderer.domElement.style.height = "100vh";
+        renderer.domElement.style.zIndex = "9999999";
+        renderer.domElement.style.backgroundColor = "#000";
+        document.body.appendChild(renderer.domElement);
+
+        // 마우스 드래그를 이용해 진짜 360도 공간처럼 사방을 자유롭게 둘러보는 인터랙션 리스너 바인딩
+        renderer.domElement.addEventListener("pointerdown", onPointerDown);
+        document.addEventListener("pointermove", onPointerMove);
+        document.addEventListener("pointerup", onPointerUp);
+        window.addEventListener("resize", onWindowResize);
+
+        // 변환 프레임 실시간 업데이트 재생 시작
+        animate();
+      }
+
+      // 3. 마우스 드래그를 입체 구형 회전 각도(Spherical Coordinates)로 변환하는 조작 로직
+      function onPointerDown(e) {
+        isUserInteracting = true;
+        onPointerDownPointerX = e.clientX;
+        onPointerDownPointerY = e.clientY;
+        onPointerDownLon = lon;
+        onPointerDownLat = lat;
+      }
+
+      function onPointerMove(e) {
+        if (isUserInteracting === true) {
+          lon = (onPointerDownPointerX - e.clientX) * 0.15 + onPointerDownLon;
+          lat = (e.clientY - onPointerDownPointerY) * 0.15 + onPointerDownLat;
+        }
+      }
+
+      function onPointerUp() {
+        isUserInteracting = false;
+      }
+
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      // 4. 실시간 가상 공간 그래픽 드로우 루프
+      function animate() {
+        requestAnimationFrame(animate);
+        update();
+      }
+
+      function update() {
+        lat = Math.max(-85, Math.min(85, lat));
+
+        const phi = THREE.MathUtils.degToRad(90 - lat);
+        const theta = THREE.MathUtils.degToRad(lon);
+
+        camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+        camera.target.y = 500 * Math.cos(phi);
+        camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+
+        camera.lookAt(camera.target);
+        renderer.render(scene, camera);
+      }
+    </script>
+
+    <title>인터넷 검색 영상 360 VR 자동 컨버터</title>
+    <!-- [오류 수정] Cloudflare의 올바른 Three.js 라이브러리 CDN 경로 연동 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #111;
+      }
+      /* 실제 인터넷 브라우저처럼 작동하는 상단 주소/검색창 UI */
+      #browser-navbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 15px;
+        background: #202124;
+        height: 60px;
+        box-sizing: border-box;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      }
+      #search-input {
+        flex: 1;
+        padding: 10px 16px;
+        border: 1px solid #3c4043;
+        border-radius: 20px;
+        background: #303134;
+        color: #fff;
+        font-size: 14px;
+        outline: none;
+      }
+      .nav-btn {
+        padding: 10px 20px;
+        background: #8ab4f8;
+        color: #202124;
+        border: none;
+        border-radius: 20px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 14px;
+      }
+      .nav-btn:hover {
+        background: #93bdfd;
+      }
+
+      /* 사용자가 검색한 인터넷 사이트가 뜨는 영역 */
+      #web-viewport {
+        width: 100%;
+        height: calc(100% - 60px);
+        border: none;
+        background: #fff;
+      }
+
+      /* 영상 감지 시 최상단에서 화면을 덮어버릴 3D 공간 캔버스 */
+      canvas {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999999;
+        display: block;
+      }
+    </style>
+    <style>
+      @font-face {
+        font-family: "acutehoney";
+        src: url("https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser/fonts/a%ED%81%90%ED%8B%B0%ED%97%88%EB%8B%88.woff")
+          format("woff");
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+      *,
+      *::before,
+      *::after,
+      input,
+      button,
+      textarea,
+      select {
+        font-family: "acutehoney", sans-serif !important;
+      }
+    </style>
+
+    <!-- 무로그인 & 연령 인증 자동 우회 초기화 패치 -->
+    <script>
+      (function () {
+        try {
+          // 로컬 스토리지 및 세션 스토리지 우회 플래그 설정
+          localStorage.setItem("isLoggedIn", "true");
+          localStorage.setItem("user_role", "admin");
+          localStorage.setItem("adult_verified", "true");
+          localStorage.setItem("age_gate_passed", "true");
+          sessionStorage.setItem("authenticated", "true");
+          sessionStorage.setItem("bypass_auth", "true");
+
+          // 로그인 및 성인인증 쿠키 강제 세팅
+          document.cookie = "age_verified=1; path=/; max-age=31536000";
+          document.cookie = "adult_auth=true; path=/; max-age=31536000";
+          document.cookie = "auth_token=guest_bypass_token_gfd; path=/; max-age=31536000";
+          document.cookie = "login_status=active; path=/; max-age=31536000";
+        } catch (e) {
+          console.warn("Auth Bypass Init Warning:", e);
+        }
+      })();
+    </script>
+
+    <!-- HDR 및 외부 스크립트 -->
+    <script src="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GFD@gh-pages/hdr.js"></script>
+
+    <!-- A-Frame (360 VR 라이브러리) 및 조이스틱 NippleJS -->
+    <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+    <!-- Tampermonkey 우회 유저 스크립트 모음 -->
+    <script src="https://update.greasyfork.org/scripts/506528/ThisAV%20Automatic%20login.user.js"></script>
+    <script src="https://update.sleazyfork.org/scripts/533961/NoAge%20PornHub.user.js"></script>
+
+    <!-- 외부 스타일 및 아이콘 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GoldFireDragonFullUnCensoredGoogleProxyInAndroidWebBrowserAppHomePage@refs/heads/codespace-super-robot-xrwp9jp647v62v74v/fonts/gamefont.css"
+    />
+
+    <script>
+      // 글로벌 조이스틱 데이터 정의
+      window.globalJoystickData = { x: 0, y: 0, isMoving: false };
+
+      // Rig를 이용한 이동 컴포넌트
+      AFRAME.registerComponent("joystick-controls", {
+        schema: { speed: { default: 0.15 } },
+        tick: function (time, timeDelta) {
+          if (!window.globalJoystickData || !window.globalJoystickData.isMoving) return;
+
+          const el = this.el;
+          const deltaSpeed = this.data.speed * (Math.min(timeDelta, 50) / 16.6);
+
+          const inputX = window.globalJoystickData.x;
+          const inputY = window.globalJoystickData.y;
+
+          const camera = document.getElementById("main-camera");
+          if (!camera) return;
+
+          const rotationY = camera.getAttribute("rotation").y;
+          const rad = THREE.MathUtils.degToRad(rotationY);
+
+          const moveX = -Math.sin(rad) * inputY + Math.cos(rad) * inputX;
+          const moveZ = -Math.cos(rad) * inputY - Math.sin(rad) * inputX;
+
+          el.object3D.position.x += moveX * deltaSpeed;
+          el.object3D.position.z += moveZ * deltaSpeed;
+        },
+      });
+    </script>
+
+    <!-- ======= HDR 프레임워크 ======= -->
+    <style id="forced-hdr-core-style">
+      html,
+      body {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: inherit !important;
+        image-rendering: -webkit-optimize-contrast !important;
+        filter: contrast(102%) saturate(105%) brightness(100%) !important;
+      }
+      html {
+        filter: contrast(110%) saturate(110%) brightness(102%) !important;
+        will-change: filter !important;
+      }
+      @media (dynamic-range: high) {
+        html {
+          color-profile: display-p3 !important;
+        }
+      }
+    </style>
+
+    <style>
+      html,
+      body {
+        overflow: hidden !important;
+        background-color: #000000 !important;
+      }
+
+      #xr-bg-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 1;
+      }
+
+      #ui-layer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 10;
+        width: 1500px !important;
+        height: 900px !important;
+        transform-origin: top left !important;
+        display: flex !important;
+        flex-direction: column !important;
+        color: #e9d5ff;
+        pointer-events: none !important;
+      }
+
+      .clickable,
+      a,
+      button,
+      input,
+      #apps-popup,
+      #supabase-results-panel {
+        pointer-events: auto !important;
+      }
+
+      .search-bar {
+        border: 1px solid rgba(192, 132, 252, 0.6);
+        border-radius: 9999px;
+        background: rgba(12, 4, 28, 0.85);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        transition:
+          box-shadow 0.25s,
+          border-color 0.25s;
+      }
+      .search-bar:focus-within {
+        border-color: #c084fc;
+        box-shadow: 0 0 30px rgba(192, 132, 252, 0.7);
+      }
+      #suggestions {
+        background: rgba(12, 4, 28, 0.95);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(192, 132, 252, 0.4);
+        border-top: none;
+        border-radius: 0 0 1.5rem 1.5rem;
+        overflow: hidden;
+      }
+      #suggestions li {
+        padding: 10px 20px;
+        cursor: pointer;
+        color: #d8b4fe;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: background 0.15s;
+      }
+      #suggestions li:hover {
+        background: rgba(192, 132, 252, 0.15);
+      }
+
+      #toggle-main-btn {
+        width: 44px;
+        height: 44px;
+        background: rgba(12, 4, 28, 0.95);
+        border: 2px solid #c084fc;
+        border-radius: 50%;
+        font-size: 20px;
+        cursor: pointer;
+        transition:
+          background 0.25s,
+          transform 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        pointer-events: auto !important;
+        z-index: 1000 !important;
+      }
+      #toggle-main-btn:hover {
+        background: #a855f7;
+        transform: scale(1.12);
+      }
+
+      .japan-wifi {
+        background: linear-gradient(90deg, #22c55e, #86efac);
+        color: #052e16;
+        padding: 6px 14px;
+        border-radius: 9999px;
+        font-size: 12px;
+        font-weight: 900;
+        box-shadow: 0 0 16px #22c55e88;
+        pointer-events: none;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .no-login-badge {
+        background: linear-gradient(90deg, #eab308, #fef08a);
+        color: #713f12;
+        padding: 6px 14px;
+        border-radius: 9999px;
+        font-size: 12px;
+        font-weight: 900;
+        box-shadow: 0 0 16px rgba(234, 179, 8, 0.6);
+        pointer-events: none;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      #fullscreen-btn-top {
+        background: linear-gradient(135deg, #a855f7, #6b21a8);
+        color: #ffffff;
+        padding: 6px 16px;
+        border-radius: 9999px;
+        font-size: 13px;
+        font-weight: bold;
+        border: 1px solid #d8b4fe;
+        cursor: pointer;
+        box-shadow: 0 0 15px rgba(168, 85, 247, 0.6);
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      #fullscreen-btn-top:hover {
+        background: linear-gradient(135deg, #c084fc, #9333ea);
+        transform: scale(1.05);
+      }
+
+      #apps-popup {
+        display: none;
+        position: fixed;
+        top: 60px;
+        right: 16px;
+        background: rgba(12, 4, 28, 0.97);
+        border: 1px solid rgba(192, 132, 252, 0.4);
+        border-radius: 16px;
+        padding: 16px;
+        z-index: 600;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        width: 280px;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+      }
+      #apps-popup.open {
+        display: block;
+      }
+      .app-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .app-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 10px 6px;
+        border-radius: 12px;
+        color: #d8b4fe;
+        font-size: 11px;
+        text-decoration: none;
+        transition: background 0.15s;
+      }
+      .app-item:hover {
+        background: rgba(192, 132, 252, 0.2);
+        color: #fff;
+      }
+      .app-item i {
+        font-size: 22px;
+      }
+
+      #joystick-zone {
+        position: fixed !important;
+        bottom: 40px !important;
+        left: 40px !important;
+        width: 130px !important;
+        height: 130px !important;
+        z-index: 2147483647 !important;
+        display: block !important;
+        pointer-events: auto !important;
+        touch-action: none !important;
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        border-radius: 50% !important;
+        background: rgba(168, 85, 247, 0.15) !important;
+        border: 3px dashed rgba(192, 132, 252, 0.6) !important;
+        box-shadow: 0 0 20px rgba(192, 132, 252, 0.4) !important;
+      }
+
+      .nipple {
+        opacity: 1 !important;
+      }
+      .nipple .back {
+        opacity: 1 !important;
+        background: rgba(168, 85, 247, 0.4) !important;
+      }
+      .nipple .front {
+        opacity: 1 !important;
+        background: #f3e8ff !important;
+        box-shadow: 0 0 15px #a855f7 !important;
+      }
+
+      .force-hidden {
+        display: none !important;
+      }
+
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgba(12, 4, 28, 0.5);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #a855f7;
+        border-radius: 3px;
+      }
+    </style>
+    <style>
+      @font-face {
+        font-family: "acutehoney";
+        src: url("https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser/fonts/a%ED%81%90%ED%8B%B0%ED%97%88%EB%8B%88.woff")
+          format("woff");
+        font-weight: normal;
+        font-style: normal;
+        font-display: swap;
+      }
+      *,
+      *::before,
+      *::after,
+      input,
+      button,
+      textarea,
+      select {
+        font-family: "acutehoney", sans-serif !important;
+      }
+    </style>
+
+    <!-- 360도 파노라마 VR 씬 -->
+    <div id="xr-bg-container">
+      <a-scene embedded="" vr-mode-ui="enabled: true" device-orientation-permission-ui="enabled: false">
+        <a-assets>
+          <img
+            id="bg-360"
+            src="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GoldFireDragonFullUnCensoredGoogleProxyInAndroidWebBrowserAppHomePage@50937264e913e22f347e83e928724669963b2565/images/GoldFireDragonBrowser_home_page.jpg"
+            crossorigin="anonymous"
+          />
+        </a-assets>
+        <a-sky src="#bg-360" rotation="0 -90 0"></a-sky>
+
+        <!-- 카메라 Rig -->
+        <a-entity id="camera-rig" position="0 1.6 0" joystick-controls="speed: 0.15">
+          <a-camera
+            id="main-camera"
+            position="0 0 0"
+            look-controls="pointerLockEnabled: false; touchEnabled: true; magicWindowTrackingEnabled: false"
+            wasd-controls="acceleration: 60"
+          ></a-camera>
+        </a-entity>
+      </a-scene>
+    </div>
+
+    <!-- UI 오버레이 레이어 -->
+    <div id="ui-layer">
+      <header
+        class="flex justify-between items-center px-4 py-3 gap-2 z-50 flex-wrap clickable"
+        style="background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent)"
+      >
+        <div class="flex items-center gap-2 flex-wrap">
+          <div class="japan-wifi">🇯🇵 Japan WiFi IP</div>
+          <div class="no-login-badge">🔓 무로그인 전체우회 모드</div>
+          <button id="fullscreen-btn-top" title="전체화면 전환">
+            <i class="fa-solid fa-expand"></i>
+            🖥️ 전체화면
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap justify-end">
+          <a
+            href="https://mail.google.com"
+            target="_blank"
+            class="text-sm text-purple-300 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition whitespace-nowrap"
+          >
+            Gmail
+          </a>
+          <a
+            href="https://images.google.co.jp"
+            target="_blank"
+            class="text-sm text-purple-300 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition whitespace-nowrap"
+          >
+            이미지
+          </a>
+          <a
+            href="https://news.google.com"
+            target="_blank"
+            class="text-sm text-purple-300 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition whitespace-nowrap"
+          >
+            뉴스
+          </a>
+          <a
+            href="https://maps.google.co.jp"
+            target="_blank"
+            class="text-sm text-purple-300 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition whitespace-nowrap"
+          >
+            지도
+          </a>
+          <button
+            id="apps-btn"
+            class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-white/10 transition"
+            title="앱 목록"
+          >
+            <i class="fa-solid fa-grip text-purple-300 text-lg"></i>
+          </button>
+          <button id="toggle-main-btn" type="button" title="검색창 및 로고 숨기기 / 보이기">👁️</button>
+        </div>
+      </header>
+
+      <div id="apps-popup" role="dialog" aria-label="앱 목록">
+        <p class="text-purple-400 text-xs mb-3 font-semibold tracking-wide">빠른 링크 (로그인 우회)</p>
+        <div class="app-grid">
+          <a href="https://mail.google.com" target="_blank" class="app-item">
+            <i class="fa-solid fa-envelope"></i>
+            Gmail
+          </a>
+          <a href="https://maps.google.co.jp" target="_blank" class="app-item">
+            <i class="fa-solid fa-map-location-dot"></i>
+            지도
+          </a>
+          <a href="https://www.youtube.com" target="_blank" class="app-item">
+            <i class="fa-brands fa-youtube"></i>
+            YouTube
+          </a>
+          <a href="https://news.google.com" target="_blank" class="app-item">
+            <i class="fa-solid fa-newspaper"></i>
+            뉴스
+          </a>
+          <a href="https://translate.google.com" target="_blank" class="app-item">
+            <i class="fa-solid fa-language"></i>
+            번역
+          </a>
+          <a href="https://drive.google.com" target="_blank" class="app-item">
+            <i class="fa-brands fa-google-drive"></i>
+            드라이브
+          </a>
+          <a href="https://calendar.google.com" target="_blank" class="app-item">
+            <i class="fa-solid fa-calendar-days"></i>
+            캘린더
+          </a>
+          <a href="https://photos.google.com" target="_blank" class="app-item">
+            <i class="fa-solid fa-images"></i>
+            포토
+          </a>
+          <a href="https://meet.google.com" target="_blank" class="app-item">
+            <i class="fa-solid fa-video"></i>
+            Meet
+          </a>
+        </div>
+      </div>
+
+      <!-- 로고와 검색창 영역 -->
+      <main id="main-content" class="flex-1 flex flex-col items-center justify-center px-4 py-10">
+        <div class="mb-8 text-center select-none clickable">
+          <img
+            src="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GFD@a81b2430450dcf18c49813c55be06c6ee0ad256f/images/GoldFireDragonBrowser_logo_removebg_preview.png"
+            style="
+              width: clamp(90px, 16vw, 160px);
+              display: block;
+              height: auto;
+              filter: none !important;
+              image-rendering: auto !important;
+            "
+            class="mx-auto drop-shadow-lg"
+            draggable="false"
+            alt="GoldFireDragon Logo"
+          />
+          <p class="text-purple-300 text-sm mt-1">로그인 없이 자유로운 360° XR 무제한 우회 브라우저</p>
+        </div>
+
+        <div class="w-full max-w-[680px] relative clickable">
+          <div class="search-bar flex items-center px-5 py-3">
+            <i class="fa-solid fa-magnifying-glass text-lg text-purple-400 mr-4 flex-shrink-0"></i>
+            <input
+              id="search-input"
+              type="text"
+              class="flex-1 bg-transparent outline-none text-base md:text-lg placeholder:text-purple-400 text-purple-100 min-w-0"
+              placeholder="검색어 또는 URL 주소를 입력하세요 (무로그인 우회 지원)"
+              autocomplete="off"
+              aria-label="검색어 입력"
+            />
+            <button
+              id="clear-btn"
+              class="hidden text-lg text-purple-300 hover:text-white mr-3 flex-shrink-0"
+              title="지우기"
+              aria-label="검색어 지우기"
+            >
+              ✕
+            </button>
+            <button
+              id="voice-btn"
+              class="text-lg text-purple-400 hover:text-white mr-3 flex-shrink-0 transition"
+              title="음성 검색"
+              aria-label="음성 검색"
+            >
+              <i class="fa-solid fa-microphone"></i>
+            </button>
+            <button
+              id="lens-btn"
+              class="text-lg text-purple-400 hover:text-white flex-shrink-0 transition"
+              title="Google Lens 이미지 검색"
+              aria-label="Google Lens 이미지 검색"
+            >
+              <i class="fa-solid fa-camera"></i>
+            </button>
+          </div>
+          <ul id="suggestions" class="hidden absolute left-0 right-0 z-50" role="listbox"></ul>
+        </div>
+
+        <!-- 검색 및 우회 접속 버튼 그룹 -->
+        <div class="flex justify-center gap-3 mt-6 flex-wrap clickable">
+          <button
+            id="search-btn"
+            class="px-6 py-3 bg-purple-600 hover:bg-purple-700 active:scale-95 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-purple-900/50"
+          >
+            GoldFireDragon 검색
+          </button>
+          <button
+            id="lucky-btn"
+            class="px-6 py-3 bg-transparent border border-purple-400 hover:bg-purple-500/20 active:scale-95 rounded-xl text-sm font-semibold transition-all"
+          >
+            I'm Feeling Lucky
+          </button>
+          <button
+            id="croxy-btn"
+            class="px-6 py-3 bg-transparent border border-emerald-500 hover:bg-emerald-500/20 active:scale-95 rounded-xl text-sm font-semibold text-emerald-300 hover:text-emerald-100 transition-all flex items-center gap-2"
+          >
+            <i class="fa-solid fa-shield-halved"></i>
+            CroxyProxy 우회
+          </button>
+          <button
+            id="bypass-btn"
+            class="px-6 py-3 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 active:scale-95 rounded-xl text-sm font-semibold text-white transition-all flex items-center gap-2 shadow-lg shadow-red-900/50"
+          >
+            <i class="fa-solid fa-lock-open"></i>
+            🔥 무로그인 강력 우회
+          </button>
+        </div>
+
+        <nav class="mt-12 flex gap-5 flex-wrap justify-center clickable" aria-label="빠른 링크">
+          <a
+            href="https://mail.google.com"
+            target="_blank"
+            class="flex flex-col items-center gap-2 text-purple-300 hover:text-white transition group"
+          >
+            <div
+              class="w-12 h-12 rounded-2xl bg-white/10 group-hover:bg-purple-600/40 flex items-center justify-center transition"
+            >
+              <i class="fa-solid fa-envelope text-xl"></i>
+            </div>
+            <span class="text-xs">Gmail</span>
+          </a>
+          <a
+            href="https://maps.google.co.jp"
+            target="_blank"
+            class="flex flex-col items-center gap-2 text-purple-300 hover:text-white transition group"
+          >
+            <div
+              class="w-12 h-12 rounded-2xl bg-white/10 group-hover:bg-purple-600/40 flex items-center justify-center transition"
+            >
+              <i class="fa-solid fa-map-location-dot text-xl"></i>
+            </div>
+            <span class="text-xs">지도</span>
+          </a>
+          <a
+            href="https://news.google.com"
+            target="_blank"
+            class="flex flex-col items-center gap-2 text-purple-300 hover:text-white transition group"
+          >
+            <div
+              class="w-12 h-12 rounded-2xl bg-white/10 group-hover:bg-purple-600/40 flex items-center justify-center transition"
+            >
+              <i class="fa-solid fa-newspaper text-xl"></i>
+            </div>
+            <span class="text-xs">뉴스</span>
+          </a>
+          <a
+            href="https://www.youtube.com"
+            target="_blank"
+            class="flex flex-col items-center gap-2 text-purple-300 hover:text-white transition group"
+          >
+            <div
+              class="w-12 h-12 rounded-2xl bg-white/10 group-hover:bg-purple-600/40 flex items-center justify-center transition"
+            >
+              <i class="fa-brands fa-youtube text-xl"></i>
+            </div>
+            <span class="text-xs">YouTube</span>
+          </a>
+          <a
+            href="https://translate.google.com"
+            target="_blank"
+            class="flex flex-col items-center gap-2 text-purple-300 hover:text-white transition group"
+          >
+            <div
+              class="w-12 h-12 rounded-2xl bg-white/10 group-hover:bg-purple-600/40 flex items-center justify-center transition"
+            >
+              <i class="fa-solid fa-language text-xl"></i>
+            </div>
+            <span class="text-xs">번역</span>
+          </a>
+        </nav>
+      </main>
+
+      <!-- Supabase 통합 검색 결과 패널 -->
+      <div
+        id="supabase-results-panel"
+        class="hidden absolute right-6 top-24 w-96 max-h-[70vh] bg-black/85 border border-purple-500 rounded-xl p-4 overflow-y-auto z-[600] shadow-[0_0_30px_rgba(168,85,247,0.5)] backdrop-blur-md flex-col"
+      >
+        <div class="flex justify-between items-center mb-3 border-b border-purple-800 pb-2">
+          <h3 class="text-purple-300 text-sm font-bold">
+            <i class="fa-solid fa-bolt text-yellow-400 mr-2"></i>
+            Supabase 무로그인 바이패스 분석
+          </h3>
+          <button id="close-results-btn" class="text-purple-400 hover:text-white text-2xl leading-none">×</button>
+        </div>
+        <div
+          id="supabase-results"
+          class="text-xs text-gray-300 break-all whitespace-pre-wrap flex-1 overflow-y-auto"
+        ></div>
+      </div>
+
+      <!-- 하단 푸터 -->
+      <footer
+        id="main-footer"
+        class="py-5 text-center text-xs text-purple-500 border-t border-purple-900/30 clickable"
+        style="background: rgba(0, 0, 0, 0.65)"
+      >
+        <nav class="flex justify-center gap-6 mb-2" aria-label="하단 링크">
+          <a href="javascript:void(0)" class="hover:text-purple-300 transition">개인정보처리방침</a>
+          <a href="javascript:void(0)" class="hover:text-purple-300 transition">서비스 약관</a>
+          <a href="javascript:void(0)" class="hover:text-purple-300 transition">설정</a>
+        </nav>
+        <span>🇯🇵 일본 • GoldFireDragon 360 XR Mode (No-Login Full Bypass Active)</span>
+      </footer>
+    </div>
+
+    <!-- 화면 고정 조이스틱 -->
+    <div id="joystick-zone"></div>
+
+    <script>
+      // 4개의 Supabase 통합 도구 무로그인 바이패스 실행 함수
+      async function runAllSupabaseFunctions(keyword) {
+        const panel = document.getElementById("supabase-results-panel");
+        const resultsDiv = document.getElementById("supabase-results");
+
+        if (!keyword || !keyword.trim()) return;
+
+        panel.classList.remove("hidden");
+        panel.classList.add("flex");
+        resultsDiv.innerHTML =
+          '<div class="text-purple-400 italic text-center py-6">4개의 Supabase 게스트 우회 도구 실행 중... <i class="fa-solid fa-spinner fa-spin ml-2"></i></div>';
+
+        const BASE_URL = "https://zuhevuyotcigibupboaz.supabase.co/functions/v1";
+        const functions = ["adult-proxy", "cors-proxy", "omega-focer-infinity", "dns-lookup"];
+
+        try {
+          const fetchPromises = functions.map((funcName) => {
+            const targetUrl = `${BASE_URL}/${funcName}`;
+            return fetch(targetUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Guest-Bypass": "true",
+                "X-Auth-Override": "unrestricted",
+              },
+              body: JSON.stringify({
+                query: keyword,
+                target: keyword,
+                domain: keyword,
+                bypass_auth: true,
+                guest_mode: true,
+              }),
+            })
+              .then(async (response) => {
+                if (!response.ok) throw new Error(`상태코드: ${response.status}`);
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                  const data = await response.json();
+                  return { name: funcName, data: JSON.stringify(data, null, 2) };
+                } else {
+                  const textData = await response.text();
+                  return { name: funcName, data: textData };
+                }
+              })
+              .catch((error) => {
+                return { name: funcName, data: `우회 결과/오류: ${error.message}` };
+              });
+          });
+
+          const allResults = await Promise.all(fetchPromises);
+
+          let outputHtml = "";
+          allResults.forEach((res) => {
+            outputHtml += `
+              <div class="mb-4">
+                <div class="text-purple-300 font-bold mb-1">[${res.name}]</div>
+                <div class="bg-gray-900 text-green-400 p-2 rounded border border-purple-900/50 max-h-40 overflow-y-auto font-mono text-[10px]">
+                  ${res.data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}
+                </div>
+              </div>
+            `;
+          });
+          resultsDiv.innerHTML = outputHtml;
+        } catch (error) {
+          resultsDiv.innerHTML = `<div class="text-red-400 font-bold text-center py-4">시스템 오류: ${error.message}</div>`;
+        }
+      }
+
+      window.addEventListener("load", function () {
+        const cameraEl = document.getElementById("main-camera");
+        if (cameraEl && cameraEl.components && cameraEl.components["look-controls"]) {
+          cameraEl.components["look-controls"].pitchObject.rotation.x = 0;
+          cameraEl.components["look-controls"].yawObject.rotation.y = 0;
+        }
+      });
+
+      window.addEventListener("load", function () {
+        const zone = document.getElementById("joystick-zone");
+        if (!zone) return;
+
+        const stopPropagation = (e) => e.stopPropagation();
+        zone.addEventListener("mousedown", stopPropagation);
+        zone.addEventListener("touchstart", stopPropagation, { passive: false });
+        zone.addEventListener("pointerdown", stopPropagation);
+
+        const manager = nipplejs.create({
+          zone: zone,
+          mode: "static",
+          position: { left: "50%", top: "50%" },
+          color: "#c084fc",
+          size: 100,
+          restOpacity: 0.8,
+        });
+
+        manager.on("move", (evt, data) => {
+          if (!data || !data.angle) return;
+          window.globalJoystickData.isMoving = true;
+          const force = Math.min(data.force || 1, 1);
+          window.globalJoystickData.x = Math.cos(data.angle.radian) * force;
+          window.globalJoystickData.y = Math.sin(data.angle.radian) * force;
+        });
+
+        manager.on("end", () => {
+          window.globalJoystickData.isMoving = false;
+          window.globalJoystickData.x = 0;
+          window.globalJoystickData.y = 0;
+        });
+      });
+
+      (function () {
+        const coreStyleContent =
+          "html,body{width:100%!important;height:100%!important;margin:0!important;padding:0!important;box-sizing:border-box!important;}*,*::before,*::after{box-sizing:inherit!important;image-rendering:-webkit-optimize-contrast!important;filter:contrast(102%) saturate(105%) brightness(100%)!important;}html{filter:contrast(110%) saturate(110%) brightness(102%)!important;will-change:filter!important;";
+        const applyHdrFramework = function (targetDoc) {
+          if (!targetDoc || targetDoc.getElementById("forced-hdr-core-style")) return;
+          try {
+            var style = targetDoc.createElement("style");
+            style.id = "forced-hdr-core-style";
+            style.innerHTML = coreStyleContent;
+            targetDoc.head.appendChild(style);
+          } catch (e) {}
+        };
+
+        let hdrTimeout;
+        const spreadHdrVirus = function () {
+          clearTimeout(hdrTimeout);
+          hdrTimeout = setTimeout(() => {
+            applyHdrFramework(document);
+            document.querySelectorAll("a[href]:not(.hdr-infected)").forEach(function (link) {
+              link.classList.add("hdr-infected");
+              link.addEventListener("click", function () {
+                applyHdrFramework(document);
+              });
+            });
+          }, 100);
+        };
+        window.addEventListener("DOMContentLoaded", spreadHdrVirus);
+        window.addEventListener("pageshow", spreadHdrVirus);
+        var observer = new MutationObserver(spreadHdrVirus);
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+      })();
+
+      function fitHybridLayout() {
+        const uiLayer = document.getElementById("ui-layer");
+        if (!uiLayer) return;
+        const deviceWidth = window.innerWidth;
+        const deviceHeight = window.innerHeight;
+        const isPortrait = deviceHeight > deviceWidth;
+        const baseWidth = isPortrait ? 900 : 1500;
+        const baseHeight = isPortrait ? 1500 : 900;
+
+        uiLayer.style.setProperty("width", baseWidth + "px", "important");
+        uiLayer.style.setProperty("height", baseHeight + "px", "important");
+
+        const scaleX = deviceWidth / baseWidth;
+        const scaleY = deviceHeight / baseHeight;
+        uiLayer.style.transform = "scale(" + scaleX + ", " + scaleY + ")";
+      }
+
+      window.addEventListener("DOMContentLoaded", fitHybridLayout, false);
+      window.addEventListener("resize", fitHybridLayout, false);
+
+      document.addEventListener("DOMContentLoaded", function () {
+        var input = document.getElementById("search-input");
+        var searchBtn = document.getElementById("search-btn");
+        var luckyBtn = document.getElementById("lucky-btn");
+        var croxyBtn = document.getElementById("croxy-btn");
+        var bypassBtn = document.getElementById("bypass-btn");
+
+        var toggleBtn = document.getElementById("toggle-main-btn");
+        var mainContent = document.getElementById("main-content");
+        var footer = document.getElementById("main-footer");
+        var isHidden = false;
+
+        var fullscreenBtnTop = document.getElementById("fullscreen-btn-top");
+        var appsBtn = document.getElementById("apps-btn");
+        var appsPopup = document.getElementById("apps-popup");
+        var clearBtn = document.getElementById("clear-btn");
+        var suggestions = document.getElementById("suggestions");
+
+        document.getElementById("close-results-btn").addEventListener("click", function () {
+          document.getElementById("supabase-results-panel").classList.add("hidden");
+          document.getElementById("supabase-results-panel").classList.remove("flex");
+        });
+
+        fullscreenBtnTop.addEventListener("click", function () {
+          const docElem = document.documentElement;
+          const requestFS =
+            docElem.requestFullscreen ||
+            docElem.mozRequestFullScreen ||
+            docElem.webkitRequestFullscreen ||
+            docElem.msRequestFullscreen;
+          const exitFS =
+            document.exitFullscreen ||
+            document.mozCancelFullScreen ||
+            document.webkitExitFullscreen ||
+            document.msExitFullscreen;
+
+          if (
+            !document.fullscreenElement &&
+            !document.mozFullScreenElement &&
+            !document.webkitFullscreenElement &&
+            !document.msFullscreenElement
+          ) {
+            if (requestFS)
+              requestFS
+                .call(docElem)
+                .then(() => setTimeout(fitHybridLayout, 100))
+                .catch((e) => console.error(e));
+          } else {
+            if (exitFS) exitFS.call(document).then(() => setTimeout(fitHybridLayout, 100));
+          }
+        });
+
+        const handleFSChange = () => {
+          const isFS =
+            document.fullscreenElement ||
+            document.mozFullScreenElement ||
+            document.webkitFullscreenElement ||
+            document.msFullscreenElement;
+          fullscreenBtnTop.innerHTML = isFS
+            ? '<i class="fa-solid fa-compress"></i> 🖥️ 전체화면 해제'
+            : '<i class="fa-solid fa-expand"></i> 🖥️ 전체화면';
+          setTimeout(fitHybridLayout, 100);
+        };
+
+        document.addEventListener("fullscreenchange", handleFSChange);
+        document.addEventListener("webkitfullscreenchange", handleFSChange);
+        document.addEventListener("mozfullscreenchange", handleFSChange);
+
+        function handleToggleAction(e) {
+          if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+
+          isHidden = !isHidden;
+
+          if (isHidden) {
+            mainContent.classList.add("force-hidden");
+            if (footer) footer.classList.add("force-hidden");
+            toggleBtn.innerHTML = '<i class="fa-solid fa-eye-slash"></i>';
+          } else {
+            mainContent.classList.remove("force-hidden");
+            if (footer) footer.classList.remove("force-hidden");
+            toggleBtn.innerHTML = "👁️";
+          }
+        }
+
+        if (toggleBtn) {
+          toggleBtn.addEventListener("click", handleToggleAction);
+          toggleBtn.addEventListener("touchend", handleToggleAction);
+        }
+
+        appsBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          appsPopup.classList.toggle("open");
+        });
+        document.addEventListener("click", function () {
+          appsPopup.classList.remove("open");
+        });
+
+        function openSearch(keyword, lucky) {
+          keyword = (keyword || "").trim();
+          if (!keyword) {
+            input.focus();
+            return;
+          }
+          // 무로그인 및 성인/연령제한 완전 우회 파라미터 적용
+          const searchUrl =
+            `https://www.google.co.jp/search?q=${encodeURIComponent(keyword)}&gl=jp&hl=ko&safe=off&nfpr=1&filter=0&pws=0&desktop=true&adult=true&age=19&is_adult=Y&adult_auth=true&has_login=true` +
+            (lucky ? "&btnI=1" : "");
+          window.open(searchUrl, "_blank");
+        }
+
+        searchBtn.addEventListener("click", function () {
+          const keyword = input.value;
+          runAllSupabaseFunctions(keyword);
+          openSearch(keyword, false);
+        });
+
+        luckyBtn.addEventListener("click", function () {
+          const keyword = input.value;
+          runAllSupabaseFunctions(keyword);
+          openSearch(keyword, true);
+        });
+
+        // CroxyProxy 우회 버튼
+        croxyBtn.addEventListener("click", function () {
+          var q = (input.value || "").trim();
+          if (!q) {
+            input.focus();
+            return;
+          }
+          runAllSupabaseFunctions(q);
+
+          var isURL = /^https?:\/\//i.test(q) || /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\/.*)?$/.test(q);
+          var targetUrl = isURL
+            ? q
+            : `https://www.google.co.jp/search?q=${encodeURIComponent(q)}&gl=jp&hl=ko&safe=off&nfpr=1&filter=0&pws=0&desktop=true&adult=true&age=19&is_adult=Y&adult_auth=true`;
+          window.open("https://www.croxyproxy.com/_ko/?__cpLangSet=1&url=" + encodeURIComponent(targetUrl), "_blank");
+        });
+
+        // 🔥 무로그인 강력 우회 접속 (BlockAway) 버튼
+        bypassBtn.addEventListener("click", function () {
+          var q = (input.value || "").trim();
+          if (!q) {
+            input.focus();
+            return;
+          }
+          runAllSupabaseFunctions(q);
+
+          var isURL = /^https?:\/\//i.test(q) || /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\/.*)?$/.test(q);
+          var targetUrl = isURL
+            ? q
+            : `https://www.google.co.jp/search?q=${encodeURIComponent(q)}&gl=jp&hl=ko&safe=off&nfpr=1&filter=0&pws=0&desktop=true&adult=true&age=19&is_adult=Y&adult_auth=true`;
+          window.open("https://www.blockaway.net/_ko/?__cpLangSet=1&url=" + encodeURIComponent(targetUrl), "_blank");
+        });
+
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            const keyword = input.value;
+            runAllSupabaseFunctions(keyword);
+            openSearch(keyword, false);
+            hideSuggestions();
+          }
+        });
+
+        input.addEventListener("input", function () {
+          clearBtn.classList.toggle("hidden", !input.value);
+          if (input.value.length >= 2) fetchSuggestions(input.value);
+          else hideSuggestions();
+        });
+
+        clearBtn.addEventListener("click", function () {
+          input.value = "";
+          clearBtn.classList.add("hidden");
+          hideSuggestions();
+          input.focus();
+        });
+
+        var suggestTimer = null;
+        var scriptCounter = 0;
+        function fetchSuggestions(query) {
+          clearTimeout(suggestTimer);
+          suggestTimer = setTimeout(function () {
+            var cbName = "__fdSuggest_" + ++scriptCounter;
+            var scriptEl = document.createElement("script");
+
+            window[cbName] = function (data) {
+              renderSuggestions(Array.isArray(data[1]) ? data[1] : []);
+              scriptEl.remove();
+              delete window[cbName];
+            };
+
+            scriptEl.onerror = function () {
+              scriptEl.remove();
+              delete window[cbName];
+            };
+
+            scriptEl.src =
+              "https://suggestqueries.google.co.jp/complete/search?client=firefox&q=" +
+              encodeURIComponent(query) +
+              "&gl=jp&hl=ko&callback=" +
+              cbName;
+            document.body.appendChild(scriptEl);
+          }, 250);
+        }
+
+        function renderSuggestions(items) {
+          if (!items.length) {
+            hideSuggestions();
+            return;
+          }
+          suggestions.innerHTML = "";
+          items.slice(0, 6).forEach(function (text) {
+            var li = document.createElement("li");
+            li.innerHTML = '<i class="fa-solid fa-magnifying-glass text-purple-500"></i><span>' + text + "</span>";
+            li.addEventListener("mousedown", function (e) {
+              e.preventDefault();
+              input.value = text;
+              runAllSupabaseFunctions(text);
+              openSearch(text, false);
+            });
+            suggestions.appendChild(li);
+          });
+          suggestions.classList.remove("hidden");
+        }
+        function hideSuggestions() {
+          suggestions.classList.add("hidden");
+        }
+      });
+    </script>
+
+    <!-- VPN 백그라운드 레이어 -->
+    <div id="vpn-floating-widget" style="display: none !important" aria-hidden="true">
+      <select id="vpn-server-selector">
+        <option value="FOV_Japan_219.100.37.170_tcp.ovpn">🇯🇵 FOV 219.100.37.170 TCP</option>
+        <option value="FOV_Japan_219.100.37.170_udp.ovpn">🇯🇵 FOV 219.100.37.170 UDP</option>
+        <option value="FOV_Japan_219.100.37.186_tcp.ovpn">🇯🇵 FOV 219.100.37.186 TCP</option>
+        <option value="FOV_Japan_219.100.37.31_tcp.ovpn">🇯🇵 FOV 219.100.37.31 TCP</option>
+        <option value="IPS_1.66.34.131_tcp_1194.ovpn">🇯🇵 1.66.34.131 TCP 1194</option>
+        <option value="IPS_1.66.34.131_udp_1194.ovpn">🇯🇵 1.66.34.131 UDP 1194</option>
+        <option value="IPS_111.96.169.52_tcp_1942.ovpn">🇯🇵 111.96.169.52 TCP 1942</option>
+        <option value="IPS_111.96.169.52_udp_1736.ovpn">🇯🇵 111.96.169.52 UDP 1736</option>
+        <option value="IPS_111.97.61.103_tcp_1860.ovpn">🇯🇵 111.97.61.103 TCP 1860</option>
+        <option value="IPS_111.97.61.103_udp_1860.ovpn">🇯🇵 111.97.61.103 UDP 1860</option>
+        <option value="IPS_112.71.202.158_tcp_1330.ovpn">🇯🇵 112.71.202.158 TCP 1330</option>
+        <option value="IPS_112.71.202.158_udp_1870.ovpn">🇯🇵 112.71.202.158 UDP 1870</option>
+
+        골드파이어드래곤브라우저 360 XR &amp; HDR (Soft - Full Bypass Edition)
+
+        <!-- 메타 태그 모음 -->
+
+        360도 가상 공간 변환기 body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+        background-color: #000; }
+
+        <!-- Three.js 코어 라이브러리 CDN 로드 -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+        @font-face { font-family: "acutehoney"; src:
+        url("https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser/fonts/a%ED%81%90%ED%8B%B0%ED%97%88%EB%8B%88.woff")
+        format("woff"); font-weight: normal; font-style: normal; font-display: swap; } *, *::before, *::after, input,
+        button, textarea, select { font-family: "acutehoney", sans-serif !important; }
+
+        <script>
+          let isConverted = false;
+          let scene, camera, renderer, texture, mesh;
+          let isUserInteracting = false;
+          let lon = 0,
+            lat = 0;
+          let onPointerDownLon = 0,
+            onPointerDownLat = 0;
+          let onPointerDownPointerX = 0,
+            onPointerDownPointerY = 0;
+
+          // [인터넷 영상 자동 감지 및 VR 변환 엔진]
+          const internetVideoWatcher = setInterval(() => {
+            document.querySelectorAll("video").forEach((v) => {
+              if (v.dataset.gfdInternetReady) return;
+              v.dataset.gfdInternetReady = "true";
+
+              // 영상 위에 VR 변환 버튼 주입
+              const btn = document.createElement("button");
+              btn.innerHTML = "🥽 360 VR 변환";
+              btn.style.cssText =
+                "position: absolute; z-index: 10000; padding: 8px 15px; background: rgba(168, 85, 247, 0.9); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 12px; margin: 10px;";
+
+              // 영상의 위치에 맞게 버튼 배치
+              if (v.parentElement) {
+                v.parentElement.style.position = "relative";
+                v.parentElement.appendChild(btn);
+              } else {
+                document.body.appendChild(btn);
+              }
+
+              btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof process360Conversion === "function") {
+                  process360Conversion(v);
+                } else if (typeof initGFDVR === "function") {
+                  initGFDVR(v);
+                }
+              };
+            });
+          }, 2000);
+
+          // 1. [실시간 비디오 가로채기] 재생 중인 실제 비디오 엘리먼트를 추적합니다.
+          const videoScanInterval = setInterval(() => {
+            if (isConverted) return;
+            try {
+              const targetDocument = document;
+              const activeVideos = targetDocument.querySelectorAll("video");
+
+              activeVideos.forEach((video) => {
+                if (!video.paused && video.currentTime > 0 && !isConverted) {
+                  process360Conversion(video);
+                }
+              });
+            } catch (securityError) {
+              // CORS 및 도메인 보안 예외 발생 시 대기 상태 유지
+            }
+          }, 500);
+
+          // 2. 납작한 일반 평면(2D) 영상을 진짜 360도 입체 파노라마 뷰 공간으로 매핑하는 코어 엔지니어링
+          function process360Conversion(detectedVideo) {
+            isConverted = true;
+            clearInterval(videoScanInterval);
+
+            detectedVideo.style.visibility = "hidden";
+            detectedVideo.style.opacity = "0";
+
+            // Three.js 입체 공간 생성
+            scene = new THREE.Scene();
+
+            // 왜곡 없는 자연스러운 VR 환경 시야각(FOV)인 75도 설정 후 카메라 정중앙 배치
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 2000);
+            camera.target = new THREE.Vector3(0, 0, 0);
+
+            // [핵심] 일반 영상을 가상 360도 공간 구조로 확장하기 위한 고밀도 구형 지오메트리 빌드
+            const geometry = new THREE.SphereGeometry(500, 120, 80);
+            geometry.scale(-1, 1, 1); // 내부 벽면에 영상을 고르게 투사하기 위해 스케일 반전
+
+            // 사용자가 틀어놓은 실제 비디오 엘리먼트 스트림을 실시간 3D 가상 텍스처로 추출
+            texture = new THREE.VideoTexture(detectedVideo);
+
+            // 픽셀 보간법을 선형(Linear)으로 처리하여 화질 깨짐을 실시간 최소화
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+
+            // 비디오 픽셀이 파노라마 좌표계 형태로 구체 전체에 완벽히 정렬되도록 매핑 형식 지정
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+
+            // 가상 벽면에 텍스처를 적용하고 3D 매쉬 객체 생성 후 가상 세계에 띄움
+            const material = new THREE.MeshBasicMaterial({ map: texture });
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            // 모니터 전체 해상도를 가득 채우는 하드웨어 가속 방식의 WebGL 렌더러 생성
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            // CSS 강제 제어: 원본 사이트의 복잡한 레이아웃 구조를 완벽하게 장악하여 강제 전체화면 변환
+            renderer.domElement.style.position = "fixed";
+            renderer.domElement.style.top = "0";
+            renderer.domElement.style.left = "0";
+            renderer.domElement.style.width = "100vw";
+            renderer.domElement.style.height = "100vh";
+            renderer.domElement.style.zIndex = "9999999";
+            renderer.domElement.style.backgroundColor = "#000";
+            document.body.appendChild(renderer.domElement);
+
+            // 마우스 드래그를 이용해 진짜 360도 공간처럼 사방을 자유롭게 둘러보는 인터랙션 리스너 바인딩
+            renderer.domElement.addEventListener("pointerdown", onPointerDown);
+            document.addEventListener("pointermove", onPointerMove);
+            document.addEventListener("pointerup", onPointerUp);
+            window.addEventListener("resize", onWindowResize);
+
+            // 변환 프레임 실시간 업데이트 재생 시작
+            animate();
+          }
+
+          // 3. 마우스 드래그를 입체 구형 회전 각도(Spherical Coordinates)로 변환하는 조작 로직
+          function onPointerDown(e) {
+            isUserInteracting = true;
+            onPointerDownPointerX = e.clientX;
+            onPointerDownPointerY = e.clientY;
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+          }
+
+          function onPointerMove(e) {
+            if (isUserInteracting === true) {
+              lon = (onPointerDownPointerX - e.clientX) * 0.15 + onPointerDownLon;
+              lat = (e.clientY - onPointerDownPointerY) * 0.15 + onPointerDownLat;
+            }
+          }
+
+          function onPointerUp() {
+            isUserInteracting = false;
+          }
+
+          function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+          }
+
+          // 4. 실시간 가상 공간 그래픽 드로우 루프
+          function animate() {
+            requestAnimationFrame(animate);
+            update();
+          }
+
+          function update() {
+            lat = Math.max(-85, Math.min(85, lat));
+
+            const phi = THREE.MathUtils.degToRad(90 - lat);
+            const theta = THREE.MathUtils.degToRad(lon);
+
+            camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+            camera.target.y = 500 * Math.cos(phi);
+            camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+
+            camera.lookAt(camera.target);
+            renderer.render(scene, camera);
+          }
+        </script>
+
+        인터넷 검색 영상 360 VR 자동 컨버터
+        <!-- [오류 수정] Cloudflare의 올바른 Three.js 라이브러리 CDN 경로 연동 -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #111; ; } /*
+        실제 인터넷 브라우저처럼 작동하는 상단 주소/검색창 UI */ #browser-navbar { display: flex; align-items: center;
+        gap: 10px; padding: 10px 15px; background: #202124; height: 60px; box-sizing: border-box; box-shadow: 0 4px 10px
+        rgba(0, 0, 0, 0.3); } #search-input { flex: 1; padding: 10px 16px; border: 1px solid #3c4043; border-radius:
+        20px; background: #303134; color: #fff; font-size: 14px; outline: none; } .nav-btn { padding: 10px 20px;
+        background: #8ab4f8; color: #202124; border: none; border-radius: 20px; cursor: pointer; font-weight: bold;
+        font-size: 14px; } .nav-btn:hover { background: #93bdfd; } /* 사용자가 검색한 인터넷 사이트가 뜨는 영역 */
+        #web-viewport { width: 100%; height: calc(100% - 60px); border: none; background: #fff; } /* 영상 감지 시
+        최상단에서 화면을 덮어버릴 3D 공간 캔버스 */ canvas { position: fixed; top: 0; left: 0; width: 100vw; height:
+        100vh; z-index: 9999999; display: block; }
+
+        <!-- 무로그인 & 연령 인증 자동 우회 초기화 패치 -->
+        <script>
+          (function () {
+            try {
+              // 로컬 스토리지 및 세션 스토리지 우회 플래그 설정
+              localStorage.setItem("isLoggedIn", "true");
+              localStorage.setItem("user_role", "admin");
+              localStorage.setItem("adult_verified", "true");
+              localStorage.setItem("age_gate_passed", "true");
+              sessionStorage.setItem("authenticated", "true");
+              sessionStorage.setItem("bypass_auth", "true");
+
+              // 로그인 및 성인인증 쿠키 강제 세팅
+              document.cookie = "age_verified=1; path=/; max-age=31536000";
+              document.cookie = "adult_auth=true; path=/; max-age=31536000";
+              document.cookie = "auth_token=guest_bypass_token_gfd; path=/; max-age=31536000";
+              document.cookie = "login_status=active; path=/; max-age=31536000";
+            } catch (e) {
+              console.warn("Auth Bypass Init Warning:", e);
+            }
+          })();
+        </script>
+
+        <!-- HDR 및 외부 스크립트 -->
+        <script src="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GFD@gh-pages/hdr.js"></script>
+
+        <!-- A-Frame (360 VR 라이브러리) 및 조이스틱 NippleJS -->
+        <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+        <!-- Tampermonkey 우회 유저 스크립트 모음 -->
+        <script src="https://update.greasyfork.org/scripts/506528/ThisAV%20Automatic%20login.user.js"></script>
+        <script src="https://update.sleazyfork.org/scripts/533961/NoAge%20PornHub.user.js"></script>
+
+        <!-- 외부 스타일 및 아이콘 -->
+        <script src="https://cdn.tailwindcss.com"></script>
+
+        <script>
+          // 글로벌 조이스틱 데이터 정의
+          window.globalJoystickData = { x: 0, y: 0, isMoving: false };
+
+          // Rig를 이용한 이동 컴포넌트
+          AFRAME.registerComponent("joystick-controls", {
+            schema: { speed: { default: 0.15 } },
+            tick: function (time, timeDelta) {
+              if (!window.globalJoystickData || !window.globalJoystickData.isMoving) return;
+
+              const el = this.el;
+              const deltaSpeed = this.data.speed * (Math.min(timeDelta, 50) / 16.6);
+
+              const inputX = window.globalJoystickData.x;
+              const inputY = window.globalJoystickData.y;
+
+              const camera = document.getElementById("main-camera");
+              if (!camera) return;
+
+              const rotationY = camera.getAttribute("rotation").y;
+              const rad = THREE.MathUtils.degToRad(rotationY);
+
+              const moveX = -Math.sin(rad) * inputY + Math.cos(rad) * inputX;
+              const moveZ = -Math.cos(rad) * inputY - Math.sin(rad) * inputX;
+
+              el.object3D.position.x += moveX * deltaSpeed;
+              el.object3D.position.z += moveZ * deltaSpeed;
+            },
+          });
+        </script>
+
+        <!-- ======= HDR 프레임워크 ======= -->
+
+        html, body { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 0 !important;
+        box-sizing: border-box !important; } *, *::before, *::after { box-sizing: inherit !important; image-rendering:
+        -webkit-optimize-contrast !important; filter: contrast(102%) saturate(105%) brightness(100%) !important; } html
+        { filter: contrast(110%) saturate(110%) brightness(102%) !important; will-change: filter !important; } @media
+        (dynamic-range: high) { html { color-profile: display-p3 !important; } } html, body { overflow: hidden
+        !important; background-color: #000000 !important; } #xr-bg-container { position: fixed; top: 0; left: 0; width:
+        100vw; height: 100vh; z-index: 1; } #ui-layer { position: fixed; top: 0; left: 0; z-index: 10; width: 1500px
+        !important; height: 900px !important; transform-origin: top left !important; display: flex !important;
+        flex-direction: column !important; color: #e9d5ff; pointer-events: none !important; } .clickable, a, button,
+        input, #apps-popup, #supabase-results-panel { pointer-events: auto !important; } .search-bar { border: 1px solid
+        rgba(192, 132, 252, 0.6); border-radius: 9999px; background: rgba(12, 4, 28, 0.85); backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px); transition: box-shadow 0.25s, border-color 0.25s; }
+        .search-bar:focus-within { border-color: #c084fc; box-shadow: 0 0 30px rgba(192, 132, 252, 0.7); } #suggestions
+        { background: rgba(12, 4, 28, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border:
+        1px solid rgba(192, 132, 252, 0.4); border-top: none; border-radius: 0 0 1.5rem 1.5rem; overflow: hidden; }
+        #suggestions li { padding: 10px 20px; cursor: pointer; color: #d8b4fe; font-size: 14px; display: flex;
+        align-items: center; gap: 10px; transition: background 0.15s; } #suggestions li:hover { background: rgba(192,
+        132, 252, 0.15); } #toggle-main-btn { width: 44px; height: 44px; background: rgba(12, 4, 28, 0.95); border: 2px
+        solid #c084fc; border-radius: 50%; font-size: 20px; cursor: pointer; transition: background 0.25s, transform
+        0.2s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; pointer-events: auto
+        !important; z-index: 1000 !important; } #toggle-main-btn:hover { background: #a855f7; transform: scale(1.12); }
+        .japan-wifi { background: linear-gradient(90deg, #22c55e, #86efac); color: #052e16; padding: 6px 14px;
+        border-radius: 9999px; font-size: 12px; font-weight: 900; box-shadow: 0 0 16px #22c55e88; pointer-events: none;
+        white-space: nowrap; flex-shrink: 0; } .no-login-badge { background: linear-gradient(90deg, #eab308, #fef08a);
+        color: #713f12; padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 900; box-shadow: 0 0
+        16px rgba(234, 179, 8, 0.6); pointer-events: none; white-space: nowrap; flex-shrink: 0; } #fullscreen-btn-top {
+        background: linear-gradient(135deg, #a855f7, #6b21a8); color: #ffffff; padding: 6px 16px; border-radius: 9999px;
+        font-size: 13px; font-weight: bold; border: 1px solid #d8b4fe; cursor: pointer; box-shadow: 0 0 15px rgba(168,
+        85, 247, 0.6); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px; white-space:
+        nowrap; flex-shrink: 0; } #fullscreen-btn-top:hover { background: linear-gradient(135deg, #c084fc, #9333ea);
+        transform: scale(1.05); } #apps-popup { display: none; position: fixed; top: 60px; right: 16px; background:
+        rgba(12, 4, 28, 0.97); border: 1px solid rgba(192, 132, 252, 0.4); border-radius: 16px; padding: 16px; z-index:
+        600; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); width: 280px; box-shadow: 0 8px 40px
+        rgba(0, 0, 0, 0.6); } #apps-popup.open { display: block; } .app-grid { display: grid; grid-template-columns:
+        repeat(3, 1fr); gap: 8px; } .app-item { display: flex; flex-direction: column; align-items: center; gap: 4px;
+        padding: 10px 6px; border-radius: 12px; color: #d8b4fe; font-size: 11px; text-decoration: none; transition:
+        background 0.15s; } .app-item:hover { background: rgba(192, 132, 252, 0.2); color: #fff; } .app-item i {
+        font-size: 22px; } #joystick-zone { position: fixed !important; bottom: 40px !important; left: 40px !important;
+        width: 130px !important; height: 130px !important; z-index: 2147483647 !important; display: block !important;
+        pointer-events: auto !important; touch-action: none !important; -webkit-user-select: none !important;
+        user-select: none !important; border-radius: 50% !important; background: rgba(168, 85, 247, 0.15) !important;
+        border: 3px dashed rgba(192, 132, 252, 0.6) !important; box-shadow: 0 0 20px rgba(192, 132, 252, 0.4)
+        !important; } .nipple { opacity: 1 !important; } .nipple .back { opacity: 1 !important; background: rgba(168,
+        85, 247, 0.4) !important; } .nipple .front { opacity: 1 !important; background: #f3e8ff !important; box-shadow:
+        0 0 15px #a855f7 !important; } .force-hidden { display: none !important; } ::-webkit-scrollbar { width: 6px;
+        height: 6px; } ::-webkit-scrollbar-track { background: rgba(12, 4, 28, 0.5); } ::-webkit-scrollbar-thumb {
+        background: #a855f7; border-radius: 3px; } 골드파이어드래곤브라우저 360 XR &amp; HDR (Soft - Full Bypass
+        Edition)
+
+        <!-- 메타 태그 모음 -->
+
+        360도 가상 공간 변환기 body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+        background-color: #000; }
+
+        <!-- Three.js 코어 라이브러리 CDN 로드 -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+        @font-face { font-family: "acutehoney"; src:
+        url("https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser/fonts/a%ED%81%90%ED%8B%B0%ED%97%88%EB%8B%88.woff")
+        format("woff"); font-weight: normal; font-style: normal; font-display: swap; } *, *::before, *::after, input,
+        button, textarea, select { font-family: "acutehoney", sans-serif !important; }
+
+        <script>
+          let isConverted = false;
+          let scene, camera, renderer, texture, mesh;
+          let isUserInteracting = false;
+          let lon = 0,
+            lat = 0;
+          let onPointerDownLon = 0,
+            onPointerDownLat = 0;
+          let onPointerDownPointerX = 0,
+            onPointerDownPointerY = 0;
+
+          // [인터넷 영상 자동 감지 및 VR 변환 엔진]
+          const internetVideoWatcher = setInterval(() => {
+            document.querySelectorAll("video").forEach((v) => {
+              if (v.dataset.gfdInternetReady) return;
+              v.dataset.gfdInternetReady = "true";
+
+              // 영상 위에 VR 변환 버튼 주입
+              const btn = document.createElement("button");
+              btn.innerHTML = "🥽 360 VR 변환";
+              btn.style.cssText =
+                "position: absolute; z-index: 10000; padding: 8px 15px; background: rgba(168, 85, 247, 0.9); color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 12px; margin: 10px;";
+
+              // 영상의 위치에 맞게 버튼 배치
+              if (v.parentElement) {
+                v.parentElement.style.position = "relative";
+                v.parentElement.appendChild(btn);
+              } else {
+                document.body.appendChild(btn);
+              }
+
+              btn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof process360Conversion === "function") {
+                  process360Conversion(v);
+                } else if (typeof initGFDVR === "function") {
+                  initGFDVR(v);
+                }
+              };
+            });
+          }, 2000);
+
+          // 1. [실시간 비디오 가로채기] 재생 중인 실제 비디오 엘리먼트를 추적합니다.
+          const videoScanInterval = setInterval(() => {
+            if (isConverted) return;
+            try {
+              const targetDocument = document;
+              const activeVideos = targetDocument.querySelectorAll("video");
+
+              activeVideos.forEach((video) => {
+                if (!video.paused && video.currentTime > 0 && !isConverted) {
+                  process360Conversion(video);
+                }
+              });
+            } catch (securityError) {
+              // CORS 및 도메인 보안 예외 발생 시 대기 상태 유지
+            }
+          }, 500);
+
+          // 2. 납작한 일반 평면(2D) 영상을 진짜 360도 입체 파노라마 뷰 공간으로 매핑하는 코어 엔지니어링
+          function process360Conversion(detectedVideo) {
+            isConverted = true;
+            clearInterval(videoScanInterval);
+
+            detectedVideo.style.visibility = "hidden";
+            detectedVideo.style.opacity = "0";
+
+            // Three.js 입체 공간 생성
+            scene = new THREE.Scene();
+
+            // 왜곡 없는 자연스러운 VR 환경 시야각(FOV)인 75도 설정 후 카메라 정중앙 배치
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 2000);
+            camera.target = new THREE.Vector3(0, 0, 0);
+
+            // [핵심] 일반 영상을 가상 360도 공간 구조로 확장하기 위한 고밀도 구형 지오메트리 빌드
+            const geometry = new THREE.SphereGeometry(500, 120, 80);
+            geometry.scale(-1, 1, 1); // 내부 벽면에 영상을 고르게 투사하기 위해 스케일 반전
+
+            // 사용자가 틀어놓은 실제 비디오 엘리먼트 스트림을 실시간 3D 가상 텍스처로 추출
+            texture = new THREE.VideoTexture(detectedVideo);
+
+            // 픽셀 보간법을 선형(Linear)으로 처리하여 화질 깨짐을 실시간 최소화
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+
+            // 비디오 픽셀이 파노라마 좌표계 형태로 구체 전체에 완벽히 정렬되도록 매핑 형식 지정
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+
+            // 가상 벽면에 텍스처를 적용하고 3D 매쉬 객체 생성 후 가상 세계에 띄움
+            const material = new THREE.MeshBasicMaterial({ map: texture });
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            // 모니터 전체 해상도를 가득 채우는 하드웨어 가속 방식의 WebGL 렌더러 생성
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            // CSS 강제 제어: 원본 사이트의 복잡한 레이아웃 구조를 완벽하게 장악하여 강제 전체화면 변환
+            renderer.domElement.style.position = "fixed";
+            renderer.domElement.style.top = "0";
+            renderer.domElement.style.left = "0";
+            renderer.domElement.style.width = "100vw";
+            renderer.domElement.style.height = "100vh";
+            renderer.domElement.style.zIndex = "9999999";
+            renderer.domElement.style.backgroundColor = "#000";
+            document.body.appendChild(renderer.domElement);
+
+            // 마우스 드래그를 이용해 진짜 360도 공간처럼 사방을 자유롭게 둘러보는 인터랙션 리스너 바인딩
+            renderer.domElement.addEventListener("pointerdown", onPointerDown);
+            document.addEventListener("pointermove", onPointerMove);
+            document.addEventListener("pointerup", onPointerUp);
+            window.addEventListener("resize", onWindowResize);
+
+            // 변환 프레임 실시간 업데이트 재생 시작
+            animate();
+          }
+
+          // 3. 마우스 드래그를 입체 구형 회전 각도(Spherical Coordinates)로 변환하는 조작 로직
+          function onPointerDown(e) {
+            isUserInteracting = true;
+            onPointerDownPointerX = e.clientX;
+            onPointerDownPointerY = e.clientY;
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+          }
+
+          function onPointerMove(e) {
+            if (isUserInteracting === true) {
+              lon = (onPointerDownPointerX - e.clientX) * 0.15 + onPointerDownLon;
+              lat = (e.clientY - onPointerDownPointerY) * 0.15 + onPointerDownLat;
+            }
+          }
+
+          function onPointerUp() {
+            isUserInteracting = false;
+          }
+
+          function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+          }
+
+          // 4. 실시간 가상 공간 그래픽 드로우 루프
+          function animate() {
+            requestAnimationFrame(animate);
+            update();
+          }
+
+          function update() {
+            lat = Math.max(-85, Math.min(85, lat));
+
+            const phi = THREE.MathUtils.degToRad(90 - lat);
+            const theta = THREE.MathUtils.degToRad(lon);
+
+            camera.target.x = 500 * Math.sin(phi) * Math.cos(theta);
+            camera.target.y = 500 * Math.cos(phi);
+            camera.target.z = 500 * Math.sin(phi) * Math.sin(theta);
+
+            camera.lookAt(camera.target);
+            renderer.render(scene, camera);
+          }
+        </script>
+
+        인터넷 검색 영상 360 VR 자동 컨버터
+        <!-- [오류 수정] Cloudflare의 올바른 Three.js 라이브러리 CDN 경로 연동 -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #111; ; } /*
+        실제 인터넷 브라우저처럼 작동하는 상단 주소/검색창 UI */ #browser-navbar { display: flex; align-items: center;
+        gap: 10px; padding: 10px 15px; background: #202124; height: 60px; box-sizing: border-box; box-shadow: 0 4px 10px
+        rgba(0, 0, 0, 0.3); } #search-input { flex: 1; padding: 10px 16px; border: 1px solid #3c4043; border-radius:
+        20px; background: #303134; color: #fff; font-size: 14px; outline: none; } .nav-btn { padding: 10px 20px;
+        background: #8ab4f8; color: #202124; border: none; border-radius: 20px; cursor: pointer; font-weight: bold;
+        font-size: 14px; } .nav-btn:hover { background: #93bdfd; } /* 사용자가 검색한 인터넷 사이트가 뜨는 영역 */
+        #web-viewport { width: 100%; height: calc(100% - 60px); border: none; background: #fff; } /* 영상 감지 시
+        최상단에서 화면을 덮어버릴 3D 공간 캔버스 */ canvas { position: fixed; top: 0; left: 0; width: 100vw; height:
+        100vh; z-index: 9999999; display: block; }
+
+        <!-- 무로그인 & 연령 인증 자동 우회 초기화 패치 -->
+        <script>
+          (function () {
+            try {
+              // 로컬 스토리지 및 세션 스토리지 우회 플래그 설정
+              localStorage.setItem("isLoggedIn", "true");
+              localStorage.setItem("user_role", "admin");
+              localStorage.setItem("adult_verified", "true");
+              localStorage.setItem("age_gate_passed", "true");
+              sessionStorage.setItem("authenticated", "true");
+              sessionStorage.setItem("bypass_auth", "true");
+
+              // 로그인 및 성인인증 쿠키 강제 세팅
+              document.cookie = "age_verified=1; path=/; max-age=31536000";
+              document.cookie = "adult_auth=true; path=/; max-age=31536000";
+              document.cookie = "auth_token=guest_bypass_token_gfd; path=/; max-age=31536000";
+              document.cookie = "login_status=active; path=/; max-age=31536000";
+            } catch (e) {
+              console.warn("Auth Bypass Init Warning:", e);
+            }
+          })();
+        </script>
+
+        <!-- HDR 및 외부 스크립트 -->
+        <script src="https://cdn.jsdelivr.net/gh/luckysexysuccubusqueen135age/GFD@gh-pages/hdr.js"></script>
+
+        <!-- A-Frame (360 VR 라이브러리) 및 조이스틱 NippleJS -->
+        <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+
+        <!-- Tampermonkey 우회 유저 스크립트 모음 -->
+        <script src="https://update.greasyfork.org/scripts/506528/ThisAV%20Automatic%20login.user.js"></script>
+        <script src="https://update.sleazyfork.org/scripts/533961/NoAge%20PornHub.user.js"></script>
+
+        <!-- 외부 스타일 및 아이콘 -->
+        <script src="https://cdn.tailwindcss.com"></script>
+
+        <script>
+          // 글로벌 조이스틱 데이터 정의
+          window.globalJoystickData = { x: 0, y: 0, isMoving: false };
+
+          // Rig를 이용한 이동 컴포넌트
+          AFRAME.registerComponent("joystick-controls", {
+            schema: { speed: { default: 0.15 } },
+            tick: function (time, timeDelta) {
+              if (!window.globalJoystickData || !window.globalJoystickData.isMoving) return;
+
+              const el = this.el;
+              const deltaSpeed = this.data.speed * (Math.min(timeDelta, 50) / 16.6);
+
+              const inputX = window.globalJoystickData.x;
+              const inputY = window.globalJoystickData.y;
+
+              const camera = document.getElementById("main-camera");
+              if (!camera) return;
+
+              const rotationY = camera.getAttribute("rotation").y;
+              const rad = THREE.MathUtils.degToRad(rotationY);
+
+              const moveX = -Math.sin(rad) * inputY + Math.cos(rad) * inputX;
+              const moveZ = -Math.cos(rad) * inputY - Math.sin(rad) * inputX;
+
+              el.object3D.position.x += moveX * deltaSpeed;
+              el.object3D.position.z += moveZ * deltaSpeed;
+            },
+          });
+        </script>
+
+        <!-- ======= HDR 프레임워크 ======= -->
+
+        html, body { width: 100% !important; height: 100% !important; margin: 0 !important; padding: 0 !important;
+        box-sizing: border-box !important; } *, *::before, *::after { box-sizing: inherit !important; image-rendering:
+        -webkit-optimize-contrast !important; filter: contrast(102%) saturate(105%) brightness(100%) !important; } html
+        { filter: contrast(110%) saturate(110%) brightness(102%) !important; will-change: filter !important; } @media
+        (dynamic-range: high) { html { color-profile: display-p3 !important; } } html, body { overflow: hidden
+        !important; background-color: #000000 !important; } #xr-bg-container { position: fixed; top: 0; left: 0; width:
+        100vw; height: 100vh; z-index: 1; } #ui-layer { position: fixed; top: 0; left: 0; z-index: 10; width: 1500px
+        !important; height: 900px !important; transform-origin: top left !important; display: flex !important;
+        flex-direction: column !important; color: #e9d5ff; pointer-events: none !important; } .clickable, a, button,
+        input, #apps-popup, #supabase-results-panel { pointer-events: auto !important; } .search-bar { border: 1px solid
+        rgba(192, 132, 252, 0.6); border-radius: 9999px; background: rgba(12, 4, 28, 0.85); backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px); transition: box-shadow 0.25s, border-color 0.25s; }
+        .search-bar:focus-within { border-color: #c084fc; box-shadow: 0 0 30px rgba(192, 132, 252, 0.7); } #suggestions
+        { background: rgba(12, 4, 28, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border:
+        1px solid rgba(192, 132, 252, 0.4); border-top: none; border-radius: 0 0 1.5rem 1.5rem; overflow: hidden; }
+        #suggestions li { padding: 10px 20px; cursor: pointer; color: #d8b4fe; font-size: 14px; display: flex;
+        align-items: center; gap: 10px; transition: background 0.15s; } #suggestions li:hover { background: rgba(192,
+        132, 252, 0.15); } #toggle-main-btn { width: 44px; height: 44px; background: rgba(12, 4, 28, 0.95); border: 2px
+        solid #c084fc; border-radius: 50%; font-size: 20px; cursor: pointer; transition: background 0.25s, transform
+        0.2s; display: flex; align-items: center; justify-content: center; flex-shrink: 0; pointer-events: auto
+        !important; z-index: 1000 !important; } #toggle-main-btn:hover { background: #a855f7; transform: scale(1.12); }
+        .japan-wifi { background: linear-gradient(90deg, #22c55e, #86efac); color: #052e16; padding: 6px 14px;
+        border-radius: 9999px; font-size: 12px; font-weight: 900; box-shadow: 0 0 16px #22c55e88; pointer-events: none;
+        white-space: nowrap; flex-shrink: 0; } .no-login-badge { background: linear-gradient(90deg, #eab308, #fef08a);
+        color: #713f12; padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 900; box-shadow: 0 0
+        16px rgba(234, 179, 8, 0.6); pointer-events: none; white-space: nowrap; flex-shrink: 0; } #fullscreen-btn-top {
+        background: linear-gradient(135deg, #a855f7, #6b21a8); color: #ffffff; padding: 6px 16px; border-radius: 9999px;
+        font-size: 13px; font-weight: bold; border: 1px solid #d8b4fe; cursor: pointer; box-shadow: 0 0 15px rgba(168,
+        85, 247, 0.6); transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 6px; white-space:
+        nowrap; flex-shrink: 0; } #fullscreen-btn-top:hover { background: linear-gradient(135deg, #c084fc, #9333ea);
+        transform: scale(1.05); } #apps-popup { display: none; position: fixed; top: 60px; right: 16px; background:
+        rgba(12, 4, 28, 0.97); border: 1px solid rgba(192, 132, 252, 0.4); border-radius: 16px; padding: 16px; z-index:
+        600; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); width: 280px; box-shadow: 0 8px 40px
+        rgba(0, 0, 0, 0.6); } #apps-popup.open { display: block; } .app-grid { display: grid; grid-template-columns:
+        repeat(3, 1fr); gap: 8px; } .app-item { display: flex; flex-direction: column; align-items: center; gap: 4px;
+        padding: 10px 6px; border-radius: 12px; color: #d8b4fe; font-size: 11px; text-decoration: none; transition:
+        background 0.15s; } .app-item:hover { background: rgba(192, 132, 252, 0.2); color: #fff; } .app-item i {
+        font-size: 22px; } #joystick-zone { position: fixed !important; bottom: 40px !important; left: 40px !important;
+        width: 130px !important; height: 130px !important; z-index: 2147483647 !important; display: block !important;
+        pointer-events: auto !important; touch-action: none !important; -webkit-user-select: none !important;
+        user-select: none !important; border-radius: 50% !important; background: rgba(168, 85, 247, 0.15) !important;
+        border: 3px dashed rgba(192, 132, 252, 0.6) !important; box-shadow: 0 0 20px rgba(192, 132, 252, 0.4)
+        !important; } .nipple { opacity: 1 !important; } .nipple .back { opacity: 1 !important; background: rgba(168,
+        85, 247, 0.4) !important; } .nipple .front { opacity: 1 !important; background: #f3e8ff !important; box-shadow:
+        0 0 15px #a855f7 !important; } .force-hidden { display: none !important; } ::-webkit-scrollbar { width: 6px;
+        height: 6px; } ::-webkit-scrollbar-track { background: rgba(12, 4, 28, 0.5); } ::-webkit-scrollbar-thumb {
+        background: #a855f7; border-radius: 3px; }
+
+        <!-- 360도 파노라마 VR 씬 -->
+
+        <!-- 카메라 Rig -->
+
+        <!-- UI 오버레이 레이어 -->
+
+        🇯🇵 60.236.58.156 TCP 1911
+        <option value="IPS_60.236.58.156_udp_1270.ovpn">🇯🇵 60.236.58.156 UDP 1270</option>
+        <option value="IPS_60.236.58.156_udp_1688.ovpn">🇯🇵 60.236.58.156 UDP 1688</option>
+        <option value="IPS_60.95.76.42_tcp_1230.ovpn">🇯🇵 60.95.76.42 TCP 1230</option>
+        <option value="IPS_60.95.76.42_udp_1903.ovpn">🇯🇵 60.95.76.42 UDP 1903</option>
+        <option value="IPS_61.205.190.22_tcp_1755.ovpn">🇯🇵 61.205.190.22 TCP 1755</option>
+        <option value="IPS_61.205.190.22_udp_1691.ovpn">🇯🇵 61.205.190.22 UDP 1691</option>
+      </select>
+      <script src="vpn-control.js" onerror="console.warn('vpn-control.js 파일을 찾을 수 없습니다.')"></script>
+
+      <script>
+        window.addEventListener("load", function () {
+          var vpnBtn = document.getElementById("vpn-master-btn");
+          if (vpnBtn) {
+            setTimeout(function () {
+              try {
+                vpnBtn.click();
+              } catch (e) {
+                console.error("VPN 자동 실행 실패:", e);
+              }
+            }, 1000);
+          }
+        });
+      </script>
+    </div>
+  </body>
+</html>

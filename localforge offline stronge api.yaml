@@ -1,0 +1,258 @@
+openapi: 3.1.1
+info:
+  title: localForage Offline Storage API
+  description: >-
+    An OpenAPI abstraction of the localForage JavaScript library.
+    localForage wraps IndexedDB, WebSQL, or localStorage using an asynchronous,
+    localStorage-like key-value pair API to improve offline experiences.
+  version: 1.10.0
+  contact:
+    name: localForage Community
+    url: https://github.com/localForage/localForage
+
+servers:
+  - url: https://device/storage/v1
+    description: Client-side virtual runtime environment
+
+paths:
+  /config:
+    post:
+      summary: Configure the database instance
+      description: >-
+        Set database information before interacting with data. Must be called
+        before any data operations.
+      operationId: configureStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigOptions'
+      responses:
+        '200':
+          description: Configuration successfully initialized or merged.
+        '400':
+          description: Invalid configuration parameters.
+
+  /items:
+    delete:
+      summary: Clear all data
+      description: Removes every key-value pair from the current data store instance.
+      operationId: clearStore
+      responses:
+        '204':
+          description: Database successfully cleared.
+        '500':
+          description: Storage driver failure.
+
+  /items/{key}:
+    get:
+      summary: Get an item
+      description: Retrieves a value from the datastore by its key.
+      operationId: getItem
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: The unique string identifier for the stored data.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageValueResponse'
+        '500':
+          description: Error reading from the underlying storage mechanism.
+
+    put:
+      summary: Set an item
+      description: >-
+        Saves data under a specified key. Overwrites the value if the key
+        already exists.
+      operationId: setItem
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: The unique string identifier for the stored data.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetItemRequest'
+      responses:
+        '200':
+          description: Data successfully saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageValueResponse'
+        '400':
+          description: Quota exceeded or serialization failure.
+
+    delete:
+      summary: Remove an item
+      description: Deletes a key-value pair from the datastore by its key.
+      operationId: removeItem
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: The unique string identifier for the stored data.
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Item successfully deleted or did not exist.
+        '500':
+          description: Error removing item from storage.
+
+  /keys:
+    get:
+      summary: List all keys
+      description: Retrieves an array containing all the keys present in the database.
+      operationId: getAllKeys
+      responses:
+        '200':
+          description: A list of all existing keys.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /keys/index/{index}:
+    get:
+      summary: Get key by its index position
+      description: >-
+        Retrieves the name of a key based on its numeric position in the
+        datastore.
+      operationId: getKeyByPosition
+      parameters:
+        - name: index
+          in: path
+          required: true
+          description: The zero-based index integer of the target key.
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: The name of the key at the given index.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    type:
+                      - string
+                      - 'null'
+                required:
+                  - key
+        '500':
+          description: Error reading from the underlying storage mechanism.
+
+  /metadata/length:
+    get:
+      summary: Get total count of keys
+      description: Gets the total number of items currently saved in the datastore.
+      operationId: getStoreLength
+      responses:
+        '200':
+          description: Total number of keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  length:
+                    type: integer
+                    minimum: 0
+                    example: 42
+                required:
+                  - length
+
+components:
+  schemas:
+    ConfigOptions:
+      type: object
+      properties:
+        driver:
+          type: array
+          description: The preferred storage drivers in priority order.
+          items:
+            type: string
+            enum:
+              - asyncStorage
+              - webSQLStorage
+              - localStorageWrapper
+          example:
+            - asyncStorage
+            - webSQLStorage
+        name:
+          type: string
+          description: The name of the database.
+          example: myAppDatabase
+        version:
+          type: number
+          description: The version schema number of the database.
+          example: 1
+        size:
+          type: integer
+          description: The size of the database in bytes.
+          example: 4980736
+        storeName:
+          type: string
+          description: The name of the datastore inside the database.
+          example: keyvaluepairs
+        description:
+          type: string
+          description: A clear, readable description of the database intent.
+          example: Local application offline state repository
+
+    SetItemRequest:
+      type: object
+      description: Request containing the value to store.
+      properties:
+        value:
+          description: >-
+            The value to save. The runtime should serialize this value before
+            passing it to localForage.
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
+      required:
+        - value
+
+    StorageValueResponse:
+      type: object
+      description: Response containing the stored value.
+      properties:
+        value:
+          description: >-
+            The stored value. Null indicates that no value exists for the
+            requested key.
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+            - type: object
+              additionalProperties: true
+            - type: array
+              items: {}
+          nullable: true
+      required:
+        - value
