@@ -6,6 +6,7 @@
   "main": "server.js",
   "scripts": {
     "dev": "vite",
+    "install": "npm install" , 
     "build": "npx vite build",
     "build:dev": "npx vite build --mode development",
     "lint": "eslint .",
