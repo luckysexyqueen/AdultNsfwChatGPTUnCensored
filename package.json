@@ -12,7 +12,6 @@
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "build:alt": "echo \"No build step required\""
   },
   "dependencies": {
     "@scelar/nodepod": "^1.9.12",
