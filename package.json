@@ -4,6 +4,7 @@
   "version": "1.3.5",
   "type": "module",
   "main": "server.js",
+  "homepage": "https://luckysexyqueen.github.io/AdultNsfwChatGptFullUnCensoredGoldFireDragonBrowser/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,7 +13,9 @@
     "preview": "vite preview",
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "build:alt": "echo \"npm run build"
+    "build:alt": "echo \"npm run build\"",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d ."
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -120,6 +123,7 @@
     "eslint": "^9.9.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.9",
+    "gh-pages": "^6.1.1",
     "globals": "^15.9.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.11",
