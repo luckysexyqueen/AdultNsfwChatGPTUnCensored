@@ -826,6 +826,9 @@
     <script src="https://aframe.io/releases/1.4.2/aframe.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
 
+    <script src="https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260803@gh-pages/MSPanorama360.js><script>
+    
+    
     <!-- Tampermonkey 우회 유저 스크립트 모음 -->
     <script src="https://update.greasyfork.org/scripts/506528/ThisAV%20Automatic%20login.user.js"></script>
     <script src="https://update.sleazyfork.org/scripts/533961/NoAge%20PornHub.user.js"></script>
@@ -1156,25 +1159,200 @@
 
     <!-- 360도 파노라마 VR 씬 -->
     <div id="xr-bg-container">
-      <a-scene embedded="" vr-mode-ui="enabled: true" device-orientation-permission-ui="enabled: false">
-        <a-assets>
-          <img
-            id="bg-360"
-            src="https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260803@gh-pages/images/GoldFireDragonBrowser_home_page.jpg?raw=true"
-          />
-        </a-assets>
-        <a-sky src="#bg-360" rotation="0 -90 0"></a-sky>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+<script>
+(function() {
+    let camera, scene, renderer, backgroundSphere, characterLayer;
+    let isUserInteracting = false;
+    let onPointerDownMouseX = 0, onPointerDownMouseY = 0;
+    let lon = 180, onPointerDownLon = 180; 
+    let lat = 0, onPointerDownLat = 0;
+    let phi = 0, theta = 0;
+    
+    let moveForward = 0, moveRight = 0;
+    const moveSpeed = 1.3;
+    const velocity = new THREE.Vector3();
 
-        <!-- 카메라 Rig -->
-        <a-entity id="camera-rig" position="0 1.6 0" joystick-controls="speed: 0.15">
-          <a-camera
-            id="main-camera"
-            position="0 0 0"
-            look-controls="pointerLockEnabled: false; touchEnabled: true; magicWindowTrackingEnabled: false"
-            wasd-controls="acceleration: 60"
-          ></a-camera>
-        </a-entity>
-      </a-scene>
+    const initVR = () => {
+        const container = document.getElementById('xr-bg-container');
+        if (!container) return;
+        container.innerHTML = '';
+        
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 5000);
+        camera.position.set(0, 0, 0.1);
+
+        const imageUrl = "https://cdn.jsdelivr.net/gh/luckysexyqueen/GoldFireDragonUnCensoredBrowser-9bhrqx-9bhrqx-7493-20260803@gh-pages/images/GoldFireDragonBrowser_home_page.jpg?raw=true";
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.src = imageUrl;
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const w = img.width, h = img.height;
+            canvas.width = w; canvas.height = h;
+            ctx.drawImage(img, 0, 0);
+            
+            // 심리스 블렌딩 (배경용)
+            const blendWidth = Math.floor(w * 0.05);
+            const leftSlice = document.createElement('canvas');
+            leftSlice.width = blendWidth; leftSlice.height = h;
+            leftSlice.getContext('2d').drawImage(img, 0, 0, blendWidth, h, 0, 0, blendWidth, h);
+            for (let x = 0; x < blendWidth; x++) {
+                ctx.globalAlpha = x / blendWidth;
+                ctx.drawImage(leftSlice, x, 0, 1, h, (w - blendWidth) + x, 0, 1, h);
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.minFilter = THREE.LinearFilter;
+
+            // [1. 배경 레이어 - 큰 구체]
+            const bgGeo = new THREE.SphereGeometry(1000, 64, 32);
+            bgGeo.scale(-1, 1, 1);
+            const bgMat = new THREE.MeshBasicMaterial({ map: texture });
+            backgroundSphere = new THREE.Mesh(bgGeo, bgMat);
+            scene.add(backgroundSphere);
+
+            // [2. 캐릭터 입체 레이어 - 물리적으로 앞에 배치]
+            // 캐릭터 부분만 선명하게 남기고 나머지는 투명하게 처리한 캔버스 생성
+            const charCanvas = document.createElement('canvas');
+            const charCtx = charCanvas.getContext('2d');
+            charCanvas.width = w; charCanvas.height = h;
+            
+            // 중앙(왕좌/캐릭터) 영역만 남기는 마스크 적용
+            charCtx.drawImage(img, 0, 0);
+            const charW = w * 0.4; // 캐릭터 가로 범위
+            const charH = h * 0.6; // 캐릭터 세로 범위
+            const charX = (w - charW) / 2;
+            const charY = (h - charH) / 2;
+            
+            // 캔버스 데이터 조작으로 캐릭터 외 영역 투명화 (쉐이더 없이 3D 구현 핵심)
+            const imageData = charCtx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const x = (i / 4) % w;
+                const y = Math.floor((i / 4) / w);
+                // 중앙 영역 밖은 투명하게 (부드러운 경계)
+                const dist = Math.sqrt(Math.pow((x - w/2)/(charW/2), 2) + Math.pow((y - h/2)/(charH/2), 2));
+                if (dist > 1.0) {
+                    data[i+3] = 0;
+                } else if (dist > 0.8) {
+                    data[i+3] = (1.0 - (dist - 0.8) / 0.2) * 255;
+                }
+            }
+            charCtx.putImageData(imageData, 0, 0);
+            
+            const charTexture = new THREE.CanvasTexture(charCanvas);
+            charTexture.wrapS = THREE.RepeatWrapping;
+            
+            // 배경보다 살짝 작은 구체로 캐릭터를 카메라 쪽으로 당김 (물리적 3D)
+            const charGeo = new THREE.SphereGeometry(900, 64, 32);
+            charGeo.scale(-1, 1, 1);
+            const charMat = new THREE.MeshBasicMaterial({ 
+                map: charTexture, 
+                transparent: true,
+                side: THREE.BackSide
+            });
+            characterLayer = new THREE.Mesh(charGeo, charMat);
+            scene.add(characterLayer);
+        };
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.domElement.style.position = 'absolute';
+        renderer.domElement.style.zIndex = '1';
+        container.appendChild(renderer.domElement);
+
+        const joystickZone = document.getElementById('joystick-zone');
+        if (joystickZone) {
+            const manager = nipplejs.create({
+                zone: joystickZone,
+                mode: 'static',
+                position: { left: '50%', top: '50%' },
+                color: '#FFD700',
+                size: 110
+            });
+            manager.on('move', (evt, data) => {
+                if (data.vector) {
+                    moveForward = data.vector.y;
+                    moveRight = data.vector.x;
+                }
+            });
+            manager.on('end', () => {
+                moveForward = 0; moveRight = 0;
+            });
+        }
+
+        const onPointerDown = (e) => {
+            if (e.target.closest('#joystick-zone') || e.target.closest('.nipple') || e.target.closest('#ui-layer')) return;
+            isUserInteracting = true;
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            onPointerDownMouseX = clientX;
+            onPointerDownMouseY = clientY;
+            onPointerDownLon = lon;
+            onPointerDownLat = lat;
+        };
+
+        const onPointerMove = (e) => {
+            if (!isUserInteracting) return;
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            lon = (onPointerDownMouseX - clientX) * 0.15 + onPointerDownLon;
+            lat = (clientY - onPointerDownMouseY) * 0.15 + onPointerDownLat;
+        };
+
+        const onPointerUp = () => { isUserInteracting = false; };
+
+        container.addEventListener('mousedown', onPointerDown);
+        window.addEventListener('mousemove', onPointerMove);
+        window.addEventListener('mouseup', onPointerUp);
+        container.addEventListener('touchstart', onPointerDown);
+        window.addEventListener('touchmove', onPointerMove);
+        window.addEventListener('touchend', onPointerUp);
+
+        const animate = () => {
+            requestAnimationFrame(animate);
+            lat = Math.max(-85, Math.min(85, lat));
+            phi = THREE.MathUtils.degToRad(90 - lat);
+            theta = THREE.MathUtils.degToRad(lon); 
+
+            const target = new THREE.Vector3();
+            target.x = 500 * Math.sin(phi) * Math.cos(theta);
+            target.y = 500 * Math.cos(phi);
+            target.z = 500 * Math.sin(phi) * Math.sin(theta);
+            camera.lookAt(camera.position.x + target.x, camera.position.y + target.y, camera.position.z + target.z);
+
+            if (moveForward !== 0 || moveRight !== 0) {
+                const forward = new THREE.Vector3();
+                camera.getWorldDirection(forward);
+                forward.y = 0; forward.normalize();
+                const right = new THREE.Vector3();
+                right.crossVectors(forward, camera.up).normalize();
+                
+                const newPos = camera.position.clone();
+                newPos.addScaledVector(forward, moveForward * moveSpeed);
+                newPos.addScaledVector(right, moveRight * moveSpeed);
+                
+                if (newPos.length() < 700) { 
+                    camera.position.copy(newPos);
+                }
+            }
+            renderer.render(scene, camera);
+        };
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    };
+    window.addEventListener('DOMContentLoaded', initVR);
+})();
+</script>
     </div>
 
     <!-- UI 오버레이 레이어 -->
@@ -2530,5 +2708,7 @@
         });
       </script>
     </div>
-  </body>
-</html>
+  <script>window.onload=function(){var d=document.createElement("div");d.id="appLoadFinished";document.body.appendChild(d);};</script>
+</body>
+
+  </html>
