@@ -1,42 +1,58 @@
-name: Build and Deploy to GitHub Pages
+name: Deploy static site to GitHub Pages
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
+          cache: npm
 
-      - name: Install dependencies
-        uses: dudeofawesome/npm-install@v1.0.0
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build static site
+        run: npm run build
+
+      - name: Disable Jekyll processing
+        run: touch dist/.nojekyll
+
+      # ./dist 자체가 아니라 그 안의 index.html·assets·서비스 워커가 Pages 사이트 루트에 배포됩니다.
+      - name: Upload dist contents as the Pages site root
+        uses: actions/upload-pages-artifact@v3
         with:
-          package-dir-path: .
+          path: ./dist
 
-      - name: Install Vite
-        run: npm install vite --save-dev
-
-      - name: Set up Vite & Build with npx
-        run: npx vite build
-
-      - name: Configure Git Credentials for Stability
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Npm build to gh-pages
-        uses: diy-pwa/npm-build-2-gh-pages@v1.13
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          dist_folder: .
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
