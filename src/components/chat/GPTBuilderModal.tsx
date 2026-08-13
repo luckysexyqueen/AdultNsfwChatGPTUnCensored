@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Upload, FileIcon, Trash2 } from 'lucide-react';
 import { createCustomGPT, updateCustomGPT, saveGPTFile, fetchGPTFiles, deleteGPTFile, readTextFile } from '@/lib/chat';
 import { supabase } from '@/lib/supabase';
@@ -28,15 +28,7 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
     isPublic: editingGPT?.is_public || false,
   });
 
-  useEffect(() => {
-    if (isOpen && editingGPT) {
-      loadExistingFiles();
-    } else {
-      setUploadedFiles([]);
-    }
-  }, [isOpen, editingGPT]);
-
-  const loadExistingFiles = async () => {
+  const loadExistingFiles = useCallback(async () => {
     if (!editingGPT) return;
     try {
       const files = await fetchGPTFiles(editingGPT.id);
@@ -44,7 +36,15 @@ export function GPTBuilderModal({ isOpen, onClose, userId, editingGPT }: GPTBuil
     } catch (error) {
       console.error('파일 로드 실패:', error);
     }
-  };
+  }, [editingGPT]);
+
+  useEffect(() => {
+    if (isOpen && editingGPT) {
+      void loadExistingFiles();
+    } else {
+      setUploadedFiles([]);
+    }
+  }, [isOpen, editingGPT, loadExistingFiles]);
 
   if (!isOpen) return null;
 
