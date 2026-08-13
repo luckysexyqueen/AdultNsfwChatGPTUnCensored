@@ -1,5 +1,4 @@
-import { supabase } from './supabase';
-import { saveMessage, updateConversationTitle } from './chat';
+import { saveMessage } from './chat';
 import { toast } from 'sonner';
 
 interface QueuedMessage {
@@ -10,139 +9,127 @@ interface QueuedMessage {
   retryCount: number;
 }
 
+function isQueuedMessage(value: unknown): value is QueuedMessage {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<QueuedMessage>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.conversationId === 'string' &&
+    typeof candidate.content === 'string' &&
+    typeof candidate.timestamp === 'number' &&
+    typeof candidate.retryCount === 'number'
+  );
+}
+
 class OfflineMessageQueue {
   private queue: QueuedMessage[] = [];
   private isProcessing = false;
-  private readonly STORAGE_KEY = 'offline-message-queue';
-  private readonly MAX_RETRIES = 3;
+  private readonly storageKey = 'offline-message-queue';
+  private readonly maxRetriesBeforeNotice = 3;
 
   constructor() {
     this.loadQueue();
     this.setupOnlineListener();
+    if (navigator.onLine && this.queue.length > 0) {
+      queueMicrotask(() => void this.processQueue());
+    }
   }
 
-  // 로컬 스토리지에서 큐 로드
   private loadQueue() {
     try {
-      const stored = localStorage.getItem(this.STORAGE_KEY);
-      if (stored) {
-        this.queue = JSON.parse(stored);
-        console.log(`[Queue] ${this.queue.length}개의 대기 중인 메시지 로드됨`);
-      }
+      const stored = localStorage.getItem(this.storageKey);
+      if (!stored) return;
+      const parsed: unknown = JSON.parse(stored);
+      this.queue = Array.isArray(parsed) ? parsed.filter(isQueuedMessage) : [];
+      console.log(`[Queue] ${this.queue.length}개의 대기 중인 메시지 로드됨`);
     } catch (error) {
       console.error('[Queue] 큐 로드 실패:', error);
       this.queue = [];
     }
   }
 
-  // 큐를 로컬 스토리지에 저장
   private saveQueue() {
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.queue));
+      localStorage.setItem(this.storageKey, JSON.stringify(this.queue));
     } catch (error) {
       console.error('[Queue] 큐 저장 실패:', error);
+      toast.error('오프라인 메시지를 브라우저에 저장하지 못했습니다. 저장 공간을 확인해주세요.');
     }
   }
 
-  // 온라인 상태 감지 및 자동 처리
   private setupOnlineListener() {
     window.addEventListener('online', () => {
       console.log('[Queue] 온라인 상태 감지, 큐 처리 시작');
-      this.processQueue();
+      void this.processQueue();
     });
   }
 
-  // 메시지를 큐에 추가
   addToQueue(conversationId: string, content: string): string {
-    if (!conversationId || !content) {
+    const normalizedContent = content.trim();
+    if (!conversationId || !normalizedContent) {
       console.error('[Queue] 유효하지 않은 메시지:', { conversationId, content });
       toast.error('메시지를 큐에 추가할 수 없습니다');
       return '';
     }
 
-    const messageId = `queued-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    const queuedMessage: QueuedMessage = {
+    const messageId = `queued-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    this.queue.push({
       id: messageId,
       conversationId,
-      content,
+      content: normalizedContent,
       timestamp: Date.now(),
       retryCount: 0,
-    };
-
-    this.queue.push(queuedMessage);
+    });
     this.saveQueue();
 
     console.log(`[Queue] 메시지 추가됨: ${messageId}`);
-    toast.info('오프라인 상태입니다. 메시지는 온라인 복귀 시 전송됩니다.');
-
     return messageId;
   }
 
-  // 큐 처리
   async processQueue() {
-    if (this.isProcessing || this.queue.length === 0) return;
-    if (!navigator.onLine) {
-      console.log('[Queue] 오프라인 상태, 큐 처리 연기');
-      return;
-    }
+    if (this.isProcessing || this.queue.length === 0 || !navigator.onLine) return;
 
     this.isProcessing = true;
-    console.log(`[Queue] ${this.queue.length}개 메시지 처리 시작`);
-
     const processedIds: string[] = [];
-    const failedIds: string[] = [];
+    let deferredCount = 0;
 
-    for (const message of [...this.queue]) {
-      try {
-        console.log(`[Queue] 메시지 전송 중: ${message.id}`);
-        
-        // 메시지 저장
-        await saveMessage(message.conversationId, 'user', message.content);
-        
-        processedIds.push(message.id);
-        console.log(`[Queue] 메시지 전송 성공: ${message.id}`);
-      } catch (error: any) {
-        console.error(`[Queue] 메시지 전송 실패: ${message.id}`, error);
-        
-        // 재시도 횟수 증가
-        message.retryCount++;
-        
-        if (message.retryCount >= this.MAX_RETRIES) {
-          failedIds.push(message.id);
-          console.error(`[Queue] 최대 재시도 횟수 초과: ${message.id}`);
+    try {
+      for (const message of [...this.queue]) {
+        try {
+          await saveMessage(message.conversationId, 'user', message.content);
+          processedIds.push(message.id);
+          console.log(`[Queue] 메시지 전송 성공: ${message.id}`);
+        } catch (error: unknown) {
+          message.retryCount += 1;
+          deferredCount += 1;
+          console.error(`[Queue] 메시지 전송 실패: ${message.id}`, error);
         }
       }
+
+      // 실패 메시지는 삭제하지 않습니다. 이후 온라인 복귀나 새로고침 시 재시도됩니다.
+      this.queue = this.queue.filter((message) => !processedIds.includes(message.id));
+      this.saveQueue();
+
+      if (processedIds.length > 0) {
+        toast.success(`${processedIds.length}개의 대기 중이던 메시지가 전송되었습니다`);
+      }
+      if (deferredCount > 0) {
+        const repeatedlyFailed = this.queue.filter(
+          (message) => message.retryCount >= this.maxRetriesBeforeNotice
+        ).length;
+        const suffix = repeatedlyFailed > 0 ? ' 연결 또는 로그인 상태를 확인한 뒤 다시 시도합니다.' : '';
+        toast.error(`${deferredCount}개의 메시지 전송을 보류했습니다.${suffix}`);
+      }
+    } finally {
+      this.isProcessing = false;
     }
-
-    // 성공한 메시지는 큐에서 제거
-    this.queue = this.queue.filter(msg => !processedIds.includes(msg.id));
-
-    // 실패한 메시지도 제거 (최대 재시도 초과)
-    this.queue = this.queue.filter(msg => !failedIds.includes(msg.id));
-
-    this.saveQueue();
-
-    if (processedIds.length > 0) {
-      toast.success(`${processedIds.length}개의 대기 중이던 메시지가 전송되었습니다`);
-    }
-
-    if (failedIds.length > 0) {
-      toast.error(`${failedIds.length}개의 메시지 전송에 실패했습니다`);
-    }
-
-    this.isProcessing = false;
-    console.log(`[Queue] 처리 완료. 남은 메시지: ${this.queue.length}개`);
   }
 
-  // 특정 메시지 제거
   removeFromQueue(messageId: string) {
-    this.queue = this.queue.filter(msg => msg.id !== messageId);
+    this.queue = this.queue.filter((message) => message.id !== messageId);
     this.saveQueue();
-    console.log(`[Queue] 메시지 제거됨: ${messageId}`);
   }
 
-  // 큐 상태 확인
   getQueueStatus() {
     return {
       count: this.queue.length,
@@ -151,14 +138,11 @@ class OfflineMessageQueue {
     };
   }
 
-  // 전체 큐 초기화
   clearQueue() {
     this.queue = [];
     this.saveQueue();
-    console.log('[Queue] 큐 초기화됨');
     toast.success('대기 중인 메시지가 모두 삭제되었습니다');
   }
 }
 
-// 싱글톤 인스턴스
 export const messageQueue = new OfflineMessageQueue();
