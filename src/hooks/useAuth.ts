@@ -6,12 +6,27 @@ import { User } from '@supabase/supabase-js';
 import { AuthUser } from '@/types';
 
 function mapSupabaseUser(user: User): AuthUser {
+  const email = user.email ?? '';
   return {
     id: user.id,
-    email: user.email!,
-    username: user.user_metadata?.username || user.user_metadata?.full_name || user.email!.split('@')[0],
+    email,
+    username:
+      user.user_metadata?.username ||
+      user.user_metadata?.full_name ||
+      (email ? email.split('@')[0] : user.id.slice(0, 8)),
     avatar: user.user_metadata?.avatar_url || user.user_metadata?.picture,
   };
+}
+
+function isGuestUser(value: unknown): value is AuthUser {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<AuthUser>;
+  return (
+    candidate.isGuest === true &&
+    typeof candidate.id === 'string' &&
+    typeof candidate.email === 'string' &&
+    typeof candidate.username === 'string'
+  );
 }
 
 export function useAuth() {
@@ -22,79 +37,82 @@ export function useAuth() {
     let mounted = true;
 
     const initAuth = async () => {
-      // 실제 Supabase 세션 우선 확인
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (session?.user) {
-        // 유효한 Supabase 세션이 있으면 게스트 데이터 제거 후 실제 사용자로 로그인
-        if (mounted) {
-          localStorage.removeItem('guest-user');
-          login(mapSupabaseUser(session.user));
-          setLoading(false);
-        }
-        return;
-      }
-      
-      // 게스트 사용자 확인
-      const guestUserStr = localStorage.getItem('guest-user');
-      if (guestUserStr) {
-        try {
-          const parsed = JSON.parse(guestUserStr);
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user) {
           if (mounted) {
-            login(parsed);
+            localStorage.removeItem('guest-user');
+            login(mapSupabaseUser(session.user));
             setLoading(false);
           }
           return;
-        } catch (e) {
-          console.error('Failed to parse guest user:', e);
+        }
+      } catch (error) {
+        // 인증 서버 장애가 있어도 게스트 모드 진입을 막지 않습니다.
+        console.error('Failed to restore Supabase session:', error);
+      }
+
+      const guestUserStr = localStorage.getItem('guest-user');
+      if (guestUserStr) {
+        try {
+          const parsed: unknown = JSON.parse(guestUserStr);
+          if (isGuestUser(parsed)) {
+            if (mounted) {
+              login(parsed);
+              setLoading(false);
+            }
+            return;
+          }
+          localStorage.removeItem('guest-user');
+        } catch (error) {
+          console.error('Failed to parse guest user:', error);
           localStorage.removeItem('guest-user');
         }
       }
-      
+
       if (mounted) setLoading(false);
     };
 
-    initAuth();
+    void initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!mounted) return;
-        
-        if (event === 'SIGNED_IN' && session?.user) {
-          // 실제 로그인 시 게스트 데이터 제거
-          localStorage.removeItem('guest-user');
-          login(mapSupabaseUser(session.user));
-          setLoading(false);
-        } else if (event === 'SIGNED_OUT') {
-          logout();
-          setLoading(false);
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          login(mapSupabaseUser(session.user));
-        }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+
+      if (event === 'SIGNED_IN' && session?.user) {
+        localStorage.removeItem('guest-user');
+        login(mapSupabaseUser(session.user));
+        setLoading(false);
+      } else if (event === 'SIGNED_OUT') {
+        resetChat();
+        logout();
+        setLoading(false);
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        login(mapSupabaseUser(session.user));
       }
-    );
+    });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [login, logout, setLoading]);
+  }, [login, logout, resetChat, setLoading]);
 
   const handleLogout = async () => {
     const currentUser = user;
+    resetChat();
+
     try {
-      // 채팅 상태 초기화
-      resetChat();
-      
-      if (currentUser?.isGuest) {
-        logout();
-      } else {
+      if (!currentUser?.isGuest) {
         await supabase.auth.signOut();
-        logout();
       }
     } catch (error) {
       console.error('Logout error:', error);
-      // 에러가 나도 로그아웃 처리
+    } finally {
       logout();
     }
   };
