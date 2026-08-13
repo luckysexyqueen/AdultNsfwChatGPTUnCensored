@@ -10,9 +10,17 @@
     <link rel="manifest" href="./manifest.json" />
     <link rel="apple-touch-icon" href="./assets/icon-CV9Zx_iX.png" />
     <!-- 선택 사항: 배포 환경의 Supabase 공개 키 설정. 파일이 없어도 로컬 모드로 계속 실행됩니다. -->
-    <script src="./env-config.js" onerror="console.info('[env-config] 파일 없음 — 로컬 모드로 계속합니다.')"></script>
-    <!-- Vite가 정적 배포용으로 번들링하는 로컬 GGUF/WASM 런타임 -->
-    <script type="module" crossorigin src="./assets/index-Be9TWq9Q.js"></script>
+    <script>
+      // env-config.js 런타임 로드 (번들링 제외)
+      (function() {
+        var s = document.createElement('script');
+        s.src = './env-config.js';
+        s.onerror = function() { console.info('[env-config] 파일 없음 — 로컬 모드로 계속합니다.'); };
+        document.head.appendChild(s);
+      })();
+    </script>
+    <!-- Vite React 엔트리포인트 -->
+    <script type="module" src="/src/main.tsx"></script>
   </head>
   <body>
     <!-- LocalForage: CDN 제거, 네이티브 IndexedDB 기반 자체 구현으로 대체 (오프라인/WebView 안전) -->
