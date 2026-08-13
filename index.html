@@ -6,25 +6,15 @@
     <meta name="theme-color" content="#10a37f" />
     <meta name="description" content="제한 없는 AI 채팅 애플리케이션" />
     <title>AI Chat - 무제한 대화</title>
-    <link rel="icon" type="image/png" href="/icon.png" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="/icon.png" />
-    <!-- Supabase -->
-    <!-- Supabase removed for local mode -->
-    <!-- 🔑 SUPABASE_ANON_KEY 자동 설정: generate-env-config.js가 .env로부터 빌드 시 생성하는 파일.
-         파일이 없으면 404가 나도 무시되고 localStorage → 입력폼 순서로 자동 진행됩니다. -->
-<script>console.log('localforage is: ', localforage);</script>
-    <script
-      src="/env-config.js"
-      onerror="console.info('[env-config] 파일 없음 — localStorage/입력폼으로 진행')"
-      script=""
-    ></script>
-    <script>
-      console.log("localforage is: ", localforage);
-    </script>
+    <link rel="icon" type="image/png" href="./assets/icon-CV9Zx_iX.png" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="apple-touch-icon" href="./assets/icon-CV9Zx_iX.png" />
+    <!-- 선택 사항: 배포 환경의 Supabase 공개 키 설정. 파일이 없어도 로컬 모드로 계속 실행됩니다. -->
+    <script src="./env-config.js" onerror="console.info('[env-config] 파일 없음 — 로컬 모드로 계속합니다.')"></script>
+    <!-- Vite가 정적 배포용으로 번들링하는 로컬 GGUF/WASM 런타임 -->
+    <script type="module" crossorigin src="./assets/index-Be9TWq9Q.js"></script>
   </head>
   <body>
-    &gt;
     <!-- LocalForage: CDN 제거, 네이티브 IndexedDB 기반 자체 구현으로 대체 (오프라인/WebView 안전) -->
     <script>
       /* ═══════════════════════════════════════════════════════════════
@@ -279,7 +269,6 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <!-- Font Awesome (브라우저 오버레이 아이콘용) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <link
       rel="stylesheet"
@@ -669,7 +658,8 @@
         width: 100%;
         height: 100%;
         border-radius: 50%;
-        object-fit: cover;
+        -o-object-fit: cover;
+           object-fit: cover;
       }
       .gpt-info {
         flex: 1;
@@ -982,7 +972,8 @@
       .msg-img-thumb img {
         width: 100%;
         height: 100%;
-        object-fit: contain;
+        -o-object-fit: contain;
+           object-fit: contain;
         display: block;
       }
       .msg-file-chip {
@@ -1034,7 +1025,8 @@
       .fp-img img {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        -o-object-fit: cover;
+           object-fit: cover;
       }
       .fp-img-name {
         position: absolute;
@@ -1133,6 +1125,9 @@
         max-height: 180px;
         overflow-y: auto;
         font-family: inherit;
+      }
+      #msg-input::-moz-placeholder {
+        color: var(--text-dim);
       }
       #msg-input::placeholder {
         color: var(--text-dim);
@@ -1747,8 +1742,11 @@
 
       let sb;
       const supabaseReady = (async function initLocalSB() {
-        window.addEventListener("online", () => setState({ isOnline: true }));
-        window.addEventListener("offline", () => setState({ isOnline: false }));
+        window.addEventListener("online", () => {
+          setState({ isOnline: true, syncStatus: "연결 복구됨" });
+          void flushSyncQueue();
+        });
+        window.addEventListener("offline", () => setState({ isOnline: false, syncStatus: "오프라인 · 기기에 저장 중" }));
 
         const chain = (table) => {
           let filters = [];
@@ -1903,14 +1901,7 @@
           },
         };
 
-        // Initial Auth Check
-        const {
-          data: { session },
-        } = await sb.auth.getSession();
-        if (session?.user) {
-          setState({ user: mapUser(session.user), view: "chat" });
-          loadUserData();
-        }
+        // 무인증 기기 프로필은 initAuth()에서 단일 경로로 복원합니다.
       })();
 
       // ═══════════════════════════════════════════════════════════════
@@ -2069,7 +2060,10 @@
       async function cacheConv(c) {
         try {
           await convStore.setItem(c.id, c);
-        } catch {}
+          await queueSync("conversation", c);
+        } catch (error) {
+          console.warn("대화 로컬 저장 실패:", error);
+        }
       }
       async function getCachedConvs(uid) {
         const res = [];
@@ -2089,7 +2083,10 @@
       async function cacheMsgLF(m) {
         try {
           await msgStore.setItem(m.id, m);
-        } catch {}
+          await queueSync("message", m);
+        } catch (error) {
+          console.warn("메시지 로컬 저장 실패:", error);
+        }
       }
       async function getCachedMsgs(cid) {
         const res = [];
@@ -2097,6 +2094,234 @@
           if (v.conversation_id === cid) res.push(v);
         });
         return res.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // 💾  DEVICE PROFILE & OPTIONAL CLOUD SYNC
+      // ═══════════════════════════════════════════════════════════════
+      const profileStore = makeStore({ name: "aichat-profile", storeName: "profile" });
+      const syncStore = makeStore({ name: "aichat-profile", storeName: "sync_queue" });
+      const DEVICE_PROFILE_KEY = "device-profile-v2";
+      const CLOUD_CONFIG_KEY = "cloud-config-v1";
+      let cloudClient = null;
+      let cloudClientKey = "";
+
+      function newDeviceId() {
+        return `device-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`}`;
+      }
+
+      async function getDeviceProfile() {
+        let profile = await profileStore.getItem(DEVICE_PROFILE_KEY).catch(() => null);
+        if (!profile || typeof profile.id !== "string") {
+          profile = {
+            id: newDeviceId(),
+            username: "사용자",
+            email: "",
+            avatar: "",
+            bio: "",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            isAnonymous: true,
+          };
+          await profileStore.setItem(DEVICE_PROFILE_KEY, profile);
+        }
+        return profile;
+      }
+
+      async function saveDeviceProfile(changes) {
+        const current = await getDeviceProfile();
+        const next = { ...current, ...changes, updated_at: new Date().toISOString() };
+        // Object URL은 현재 탭에서만 유효하므로 IndexedDB에는 파일 ID와 메타데이터만 저장합니다.
+        const persistent = { ...next };
+        delete persistent.avatarPreview;
+        await profileStore.setItem(DEVICE_PROFILE_KEY, persistent);
+        // 기존 로컬 스토리지 어댑터와의 호환성을 유지합니다.
+        await localforage.setItem("local_user", persistent).catch(() => {});
+        return next;
+      }
+
+      async function hydrateProfileMedia(profile) {
+        if (!profile?.avatarFileId) return profile;
+        const avatarPreview = await createObjUrl(profile.avatarFileId).catch(() => null);
+        return avatarPreview ? { ...profile, avatarPreview } : profile;
+      }
+
+      function profileAvatarSrc(profile) {
+        return profile?.avatarPreview || profile?.avatar || "";
+      }
+
+      async function getProfileDocuments(profile = S.user) {
+        const documents = Array.isArray(profile?.documents) ? profile.documents : [];
+        return documents.filter((document) => document?.id && document?.name);
+      }
+
+      async function getCloudConfig() {
+        const stored = await profileStore.getItem(CLOUD_CONFIG_KEY).catch(() => null);
+        const env = window.__ENV__ || {};
+        return {
+          url: stored?.url || env.SUPABASE_URL || "",
+          anonKey: stored?.anonKey || env.SUPABASE_ANON_KEY || "",
+        };
+      }
+
+      async function saveCloudConfig(url, anonKey) {
+        const normalizedUrl = String(url || "").trim().replace(/\/$/, "");
+        const normalizedKey = String(anonKey || "").trim();
+        if (!/^https:\/\//i.test(normalizedUrl) || !normalizedKey) {
+          throw new Error("유효한 HTTPS Supabase URL과 Anon Key를 입력하세요.");
+        }
+        await profileStore.setItem(CLOUD_CONFIG_KEY, { url: normalizedUrl, anonKey: normalizedKey });
+        cloudClient = null;
+        cloudClientKey = "";
+      }
+
+      async function getCloudClient() {
+        const config = await getCloudConfig();
+        if (!config.url || !config.anonKey) return null;
+        const key = `${config.url}|${config.anonKey}`;
+        if (cloudClient && cloudClientKey === key) return cloudClient;
+        const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2.49.8");
+        cloudClient = createClient(config.url, config.anonKey, {
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        });
+        cloudClientKey = key;
+        return cloudClient;
+      }
+
+      async function updateSyncCount() {
+        let count = 0;
+        await syncStore.iterate(() => {
+          count += 1;
+        }).catch(() => {});
+        if (typeof S !== "undefined") setState({ syncPending: count });
+        return count;
+      }
+
+      async function queueSync(kind, record) {
+        if (!record?.id) return;
+        await syncStore.setItem(`${kind}:${record.id}`, {
+          kind,
+          record: { ...record },
+          queued_at: new Date().toISOString(),
+          attempts: 0,
+        });
+        await updateSyncCount();
+        if (navigator.onLine) void flushSyncQueue();
+      }
+
+      async function flushSyncQueue() {
+        if (!navigator.onLine || !S?.account?.connected || S.syncing) return false;
+        const client = await getCloudClient().catch(() => null);
+        if (!client) return false;
+        setState({ syncing: true, syncStatus: "동기화 중" });
+        let failed = false;
+        try {
+          const { data: sessionData } = await client.auth.getSession();
+          const accountId = sessionData?.session?.user?.id;
+          if (!accountId) return false;
+          const jobs = [];
+          await syncStore.iterate((job, key) => jobs.push({ job, key }));
+          // 프로필 파일을 먼저 올린 뒤 프로필 메타데이터를 반영합니다.
+          jobs.sort((a, b) => (a.job.kind === "profileFile" ? -1 : 0) - (b.job.kind === "profileFile" ? -1 : 0));
+          for (const { job, key } of jobs) {
+            try {
+              let error = null;
+              if (job.kind === "conversation") {
+                ({ error } = await client.from("conversations").upsert({ ...job.record, user_id: accountId }, { onConflict: "id" }));
+              } else if (job.kind === "message") {
+                ({ error } = await client.from("messages").upsert(job.record, { onConflict: "id" }));
+              } else if (job.kind === "profileFile") {
+                const blob = await getFileBlob(job.record.id);
+                if (!blob) throw new Error("프로필 파일을 이 기기에서 찾지 못했습니다.");
+                const safeName = String(job.record.name || "file").replace(/[^a-zA-Z0-9._-]/g, "_");
+                const path = `${accountId}/profile/${job.record.id}-${safeName}`;
+                ({ error } = await client.storage.from("chat-files").upload(path, blob, {
+                  upsert: true,
+                  contentType: job.record.mimeType || "application/octet-stream",
+                }));
+                if (!error) {
+                  const profile = await getDeviceProfile();
+                  const changes = job.record.role === "profile-avatar"
+                    ? { avatarCloudPath: path }
+                    : { documents: (profile.documents || []).map((document) => document.id === job.record.id ? { ...document, cloudPath: path } : document) };
+                  const updated = await saveDeviceProfile(changes);
+                  await queueSync("profile", updated);
+                }
+              } else if (job.kind === "profile") {
+                ({ error } = await client.auth.updateUser({
+                  data: {
+                    username: job.record.username,
+                    avatar_url: job.record.avatar || "",
+                    avatar_path: job.record.avatarCloudPath || "",
+                    bio: job.record.bio || "",
+                    documents: (job.record.documents || []).map(({ id, name, mimeType, size, cloudPath }) => ({ id, name, mimeType, size, cloudPath: cloudPath || "" })),
+                  },
+                }));
+              }
+              if (error) throw error;
+              await syncStore.removeItem(key);
+            } catch (error) {
+              failed = true;
+              await syncStore.setItem(key, { ...job, attempts: (job.attempts || 0) + 1, last_error: String(error?.message || error) });
+            }
+          }
+          const pending = await updateSyncCount();
+          setState({ syncStatus: failed ? "일부 동기화 대기" : pending ? "동기화 대기" : "동기화 완료" });
+          return !failed;
+        } finally {
+          setState({ syncing: false });
+        }
+      }
+
+      async function pullCloudData() {
+        if (!S?.account?.connected) return false;
+        const client = await getCloudClient().catch(() => null);
+        if (!client) return false;
+        const { data: sessionData } = await client.auth.getSession();
+        const accountId = sessionData?.session?.user?.id;
+        if (!accountId || !S.user?.id) return false;
+        const { data: remoteConversations, error: conversationsError } = await client
+          .from("conversations")
+          .select("*")
+          .eq("user_id", accountId)
+          .order("updated_at", { ascending: false });
+        if (conversationsError) throw conversationsError;
+        for (const conversation of remoteConversations || []) {
+          await convStore.setItem(conversation.id, { ...conversation, user_id: S.user.id });
+          const { data: remoteMessages, error: messagesError } = await client
+            .from("messages")
+            .select("*")
+            .eq("conversation_id", conversation.id)
+            .order("created_at", { ascending: true });
+          if (messagesError) throw messagesError;
+          for (const message of remoteMessages || []) await msgStore.setItem(message.id, message);
+        }
+        const conversations = await getCachedConvs(S.user.id);
+        const currentMessages = S.currentConvId ? await getCachedMsgs(S.currentConvId) : S.messages;
+        setState({ conversations, messages: currentMessages, syncStatus: "동기화 완료" });
+        return true;
+      }
+
+      async function refreshCloudAccount() {
+        const client = await getCloudClient().catch(() => null);
+        if (!client) return null;
+        const { data } = await client.auth.getSession();
+        const remoteUser = data?.session?.user;
+        if (!remoteUser) return null;
+        const device = await getDeviceProfile();
+        const linked = await saveDeviceProfile({
+          accountId: remoteUser.id,
+          email: remoteUser.email || "",
+          username: remoteUser.user_metadata?.username || device.username,
+          avatar: remoteUser.user_metadata?.avatar_url || device.avatar || "",
+          bio: remoteUser.user_metadata?.bio || device.bio || "",
+          isAnonymous: false,
+        });
+        setState({ user: linked, account: { connected: true, provider: remoteUser.app_metadata?.provider || "email" } });
+        await queueSync("profile", linked);
+        await flushSyncQueue();
+        await pullCloudData().catch((error) => console.warn("원격 데이터 수신 동기화 실패:", error));
+        return linked;
       }
 
       // ═══════════════════════════════════════════════════════════════
@@ -2126,6 +2351,12 @@
         browserOpen: false,
         // sidebar drawer open
         sidebarOpen: false,
+        // 브라우저 메모리에서 실행되는 로컬 GGUF 모델 상태
+        localModel: { ready: false, loading: false, generating: false, modelFiles: 0 },
+        account: { connected: false, provider: "" },
+        syncPending: 0,
+        syncing: false,
+        syncStatus: "기기에 안전하게 저장됨",
       };
 
       let renderScheduled = false;
@@ -2148,6 +2379,7 @@
         el.className = `toast ${type}`;
         el.textContent = msg;
         const c = document.getElementById("toast-container");
+        if (!c) return;
         c.appendChild(el);
         setTimeout(() => {
           el.style.opacity = "0";
@@ -2160,12 +2392,17 @@
       // 🔐  AUTH
       // ═══════════════════════════════════════════════════════════════
       function mapUser(u) {
+        const email = u?.email || "";
         return {
-          id: u.id,
-          email: u.email,
-          username: u.user_metadata?.username || u.user_metadata?.full_name || u.email.split("@")[0],
-          avatar: u.user_metadata?.avatar_url,
+          id: u?.id || `local-${Date.now()}`,
+          email,
+          username: u?.user_metadata?.username || u?.user_metadata?.full_name || (email ? email.split("@")[0] : "사용자"),
+          avatar: u?.user_metadata?.avatar_url,
         };
+      }
+
+      function isValidLocalUser(user) {
+        return !!user && typeof user.id === "string" && typeof user.username === "string";
       }
 
       // 네트워크 요청이 응답 없이 멈추는 경우를 대비한 타임아웃 헬퍼
@@ -2198,23 +2435,39 @@
       }
 
       async function initAuth() {
+        // 기본 모드는 무인증입니다. 기기 프로필과 대화는 IndexedDB에 영구 보관됩니다.
         try {
-          const {
-            data: { session },
-          } = await withTimeout(sb.auth.getSession(), 5000, { data: { session: null } });
-          if (session?.user) {
-            setState({ user: mapUser(session.user), loading: false, view: "chat" });
-            return;
-          }
-        } catch (e) {
-          console.warn("initAuth error:", e);
+          const deviceProfile = await getDeviceProfile();
+          const linkedProfile = await refreshCloudAccount().catch(() => null);
+          const profile = await hydrateProfileMedia(linkedProfile || deviceProfile);
+          setState({
+            user: profile,
+            loading: false,
+            view: "chat",
+            account: linkedProfile ? S.account : { connected: false, provider: "" },
+          });
+          await updateSyncCount();
+          await loadUserData();
+          if (navigator.onLine) void flushSyncQueue();
+        } catch (error) {
+          console.warn("기기 프로필 초기화 오류:", error);
+          const fallback = { id: newDeviceId(), username: "사용자", email: "", avatar: "", bio: "", isAnonymous: true };
+          setState({ user: fallback, loading: false, view: "chat", account: { connected: false, provider: "" } });
         }
-        setState({ loading: false, view: "auth" });
       }
       // (인증 상태 리스너는 supabaseReady 안, sb 생성 직후로 이동되었습니다)
 
       async function doLogout() {
-        await sb.auth.signOut();
+        try {
+          await sb.auth.signOut();
+        } catch (e) {
+          console.warn("logout error:", e);
+        }
+        try {
+          await localforage.removeItem("local_user");
+        } catch (e) {
+          console.warn("local guest cleanup error:", e);
+        }
         setState({
           user: null,
           view: "auth",
@@ -2223,6 +2476,10 @@
           customGPTs: [],
           currentConvId: null,
           currentGPT: null,
+          currentGPTFiles: [],
+          attachedFiles: [],
+          isStreaming: false,
+          streamingMsg: "",
           dropdownOpen: false,
         });
       }
@@ -2238,20 +2495,10 @@
       async function loadConversations() {
         const uid = S.user?.id;
         if (!uid) return;
-        try {
-          const { data, error } = await withTimeout(
-            sb.from("conversations").select("*").eq("user_id", uid).order("updated_at", { ascending: false }),
-            8000,
-            { data: null, error: new Error("timeout") },
-          );
-          if (error) throw error;
-          setState({ conversations: data || [] });
-          for (const cv of data || []) {
-            await cacheConv(cv).catch(() => {});
-          }
-        } catch {
-          const c = await getCachedConvs(uid);
-          setState({ conversations: c });
+        // 대화는 항상 우선 기기 저장소에서 복원해 오프라인에서도 즉시 표시합니다.
+        setState({ conversations: await getCachedConvs(uid) });
+        if (S.account?.connected && navigator.onLine) {
+          void pullCloudData().catch((error) => console.warn("대화 수신 동기화 실패:", error));
         }
       }
 
@@ -2280,23 +2527,10 @@
           setState({ messages: [] });
           return;
         }
-        try {
-          const { data, error } = await sb
-            .from("messages")
-            .select("*")
-            .eq("conversation_id", convId)
-            .order("created_at", { ascending: true });
-          if (error) throw error;
-          const msgs = await Promise.all(
-            (data || []).map(async (m) => {
-              const ids = await getMsgFiles(m.id);
-              return ids.length ? { ...m, localFileIds: ids } : m;
-            }),
-          );
-          setState({ messages: msgs });
-        } catch {
-          const m = await getCachedMsgs(convId);
-          setState({ messages: m });
+        // 메시지도 기기 캐시가 기준입니다. 계정이 연결된 경우 pullCloudData()가 캐시를 병합합니다.
+        setState({ messages: await getCachedMsgs(convId) });
+        if (S.account?.connected && navigator.onLine) {
+          void pullCloudData().catch((error) => console.warn("메시지 수신 동기화 실패:", error));
         }
       }
 
@@ -2334,14 +2568,29 @@
                       localId: meta.id,
                     });
                 } else {
-                  const { data: s } = await sb.storage.from("chat-files").createSignedUrl(data.path, 3600);
-                  attachments.push({
-                    name: file.name,
-                    mimeType: file.type,
-                    type: "image",
-                    url: s?.signedUrl,
-                    localId: meta.id,
-                  });
+                  const { data: signed, error: signedError } = await sb.storage
+                    .from("chat-files")
+                    .createSignedUrl(data.path, 3600);
+                  if (signedError || !signed?.signedUrl) {
+                    const b64 = await fileToBase64(meta.id);
+                    if (b64) {
+                      attachments.push({
+                        name: file.name,
+                        mimeType: file.type,
+                        type: "image",
+                        base64: b64,
+                        localId: meta.id,
+                      });
+                    }
+                  } else {
+                    attachments.push({
+                      name: file.name,
+                      mimeType: file.type,
+                      type: "image",
+                      url: signed.signedUrl,
+                      localId: meta.id,
+                    });
+                  }
                 }
               }
             } else if (meta.type === "text") {
@@ -2363,16 +2612,56 @@
         return attachments;
       }
 
-      async function sendMessage(content, filesToSend = []) {
-        if (!S.user) return;
-        const trimmed = content.trim();
-        if (!trimmed && filesToSend.length === 0) return;
-        if (S.isStreaming) return;
-        if (false) {
-          // Allow offline message saving
-          toast("오프라인 상태입니다", "error");
-          return;
+      async function finalizeAssistantResponse(full, convId, isGuest, currentMsgs, trimmed, displayContent) {
+        const assistantMessage = {
+          id: `tmp-${Date.now()}`,
+          conversation_id: convId,
+          role: "assistant",
+          content: full,
+          created_at: new Date().toISOString(),
+        };
+
+        if (isGuest) {
+          assistantMessage.id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          setState({ messages: [...S.messages, assistantMessage], streamingMsg: "", isStreaming: false });
+          await cacheMsgLF(assistantMessage).catch(() => {});
+        } else {
+          const { data, error } = await sb
+            .from("messages")
+            .insert({ conversation_id: convId, role: "assistant", content: full })
+            .select()
+            .single();
+          const finalMessage = error ? assistantMessage : { ...data };
+          setState({ messages: [...S.messages, finalMessage], streamingMsg: "", isStreaming: false });
+          if (!error) await cacheMsgLF(finalMessage).catch(() => {});
         }
+
+        if (currentMsgs.length === 1) {
+          const newTitle = trimmed.slice(0, 50) || displayContent.slice(0, 50);
+          if (!isGuest) {
+            sb.from("conversations")
+              .update({ title: newTitle, updated_at: new Date().toISOString() })
+              .eq("id", convId)
+              .then(() => {});
+          }
+          const updatedAt = new Date().toISOString();
+          const updatedConversations = S.conversations.map((conversation) =>
+            conversation.id === convId ? { ...conversation, title: newTitle, updated_at: updatedAt } : conversation,
+          );
+          setState({ conversations: updatedConversations });
+          const updatedConversation = updatedConversations.find((conversation) => conversation.id === convId);
+          if (updatedConversation) await cacheConv(updatedConversation).catch(() => {});
+        }
+      }
+
+      async function sendMessage(content, filesToSend = []) {
+        if (!S.user) {
+          toast("게스트 로그인 또는 로그인이 필요합니다", "error");
+          return false;
+        }
+        const trimmed = content.trim();
+        if (!trimmed && filesToSend.length === 0) return false;
+        if (S.isStreaming) return false;
 
         let convId = S.currentConvId;
         let savedMsgId = null;
@@ -2476,6 +2765,47 @@
           await setMsgFiles(savedMsgId, localFileIds).catch(() => {});
         }
 
+        // 오프라인에서는 메시지를 로컬에 보존하고, 연결 복귀 뒤 사용자가 다시 전송할 수 있게 합니다.
+        if (!S.isOnline) {
+          setState({ isStreaming: false, streamingMsg: "" });
+          toast("오프라인 상태입니다. 메시지를 로컬에 저장했습니다.", "info");
+          return true;
+        }
+
+        // 선택된 로컬 GGUF 모델은 네트워크 요청 없이 현재 브라우저에서 실행합니다.
+        if (S.localModel?.ready && window.LocalGGUF) {
+          try {
+            const localMessages = [];
+            if (sysPrompt) localMessages.push({ role: "system", content: sysPrompt });
+            if (instructions) localMessages.push({ role: "system", content: instructions });
+            localMessages.push(...currentMsgs.map((message) => ({ role: message.role, content: message.content })));
+
+            const textAttachments = chatAttachments
+              .filter((attachment) => attachment.type === "text" && attachment.textContent)
+              .map((attachment) => `\n\n[첨부 파일: ${attachment.name}]\n${attachment.textContent.slice(0, 8000)}`)
+              .join("");
+            if (textAttachments && localMessages.length) {
+              localMessages[localMessages.length - 1].content += textAttachments;
+            }
+            if (chatAttachments.some((attachment) => attachment.type === "image")) {
+              toast("현재 로컬 텍스트 모델은 이미지 입력을 분석하지 않습니다. 이미지 없이 텍스트로 응답합니다.", "info", 4500);
+            }
+
+            const full = await window.LocalGGUF.generate(localMessages, {
+              onToken: (token) => setState({ streamingMsg: `${S.streamingMsg}${token}` }),
+            });
+            await finalizeAssistantResponse(full, convId, isGuest, currentMsgs, trimmed, displayContent);
+            setState({ localModel: window.LocalGGUF.getStatus() });
+            return true;
+          } catch (error) {
+            console.error("local GGUF error:", error);
+            setState({ isStreaming: false, streamingMsg: "", localModel: window.LocalGGUF.getStatus() });
+            toast(error instanceof Error ? error.message : "로컬 모델 응답 생성에 실패했습니다.", "error", 6000);
+            // 사용자 메시지는 이미 로컬에 저장되었으므로 중복 전송을 막기 위해 입력은 비웁니다.
+            return !!savedMsgId;
+          }
+        }
+
         // Stream from AI
         try {
           const {
@@ -2483,11 +2813,6 @@
           } = await sb.auth.getSession();
           const token = session?.access_token || (isGuest ? "guest-token" : "anon");
 
-          if (!S.isOnline) {
-            throw new Error(
-              "오프라인 상태입니다. 메시지는 로컬에 저장되었지만 AI 응답을 받으려면 인터넷 연결이 필요합니다.",
-            );
-          }
           const resp = await fetch(EDGE_FUNCTION_URL, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -2518,6 +2843,7 @@
             throw new Error(errMsg);
           }
 
+          if (!resp.body) throw new Error("AI 응답 스트림을 받지 못했습니다");
           const reader = resp.body.getReader();
           const dec = new TextDecoder();
           let full = "",
@@ -2543,51 +2869,30 @@
             }
           }
 
+          // 마지막 청크가 줄바꿈 없이 종료된 SSE 응답도 처리합니다.
+          const remaining = (buf + dec.decode()).trim();
+          if (remaining.startsWith("data:")) {
+            try {
+              const pending = JSON.parse(remaining.replace(/^data:\\s*/, "").trim());
+              const delta = pending.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                full += delta;
+                setState({ streamingMsg: full });
+              }
+            } catch {}
+          }
+
           if (!full.trim()) throw new Error("AI가 응답을 생성하지 못했습니다");
 
-          // Save AI response
-          const aiMsgBase = {
-            id: `tmp-${Date.now()}`,
-            conversation_id: convId,
-            role: "assistant",
-            content: full,
-            created_at: new Date().toISOString(),
-          };
-          if (isGuest) {
-            aiMsgBase.id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-            setState({ messages: [...S.messages, aiMsgBase], streamingMsg: "", isStreaming: false });
-            await cacheMsgLF(aiMsgBase).catch(() => {});
-          } else {
-            const { data, error } = await sb
-              .from("messages")
-              .insert({ conversation_id: convId, role: "assistant", content: full })
-              .select()
-              .single();
-            const finalMsg = error ? aiMsgBase : { ...data };
-            setState({ messages: [...S.messages, finalMsg], streamingMsg: "", isStreaming: false });
-            if (!error) await cacheMsgLF(finalMsg).catch(() => {});
-          }
-
-          // Update conversation title on first message
-          if (currentMsgs.length === 1) {
-            const newTitle = trimmed.slice(0, 50) || displayContent.slice(0, 50);
-            if (!isGuest) {
-              sb.from("conversations")
-                .update({ title: newTitle, updated_at: new Date().toISOString() })
-                .eq("id", convId)
-                .then(() => {});
-            }
-            setState({
-              conversations: S.conversations.map((c) =>
-                c.id === convId ? { ...c, title: newTitle, updated_at: new Date().toISOString() } : c,
-              ),
-            });
-          }
+          await finalizeAssistantResponse(full, convId, isGuest, currentMsgs, trimmed, displayContent);
+          return true;
         } catch (err) {
           console.error("sendMessage error:", err);
           setState({ isStreaming: false, streamingMsg: "" });
           if (!savedMsgId) setState({ messages: S.messages.filter((m) => m.id !== tempId) });
-          toast(err.message || "메시지 전송에 실패했습니다", "error");
+          toast(err instanceof Error ? err.message : "메시지 전송에 실패했습니다", "error");
+          // 사용자 메시지가 이미 저장된 경우 입력을 보존하면 같은 메시지가 중복 전송될 수 있습니다.
+          return !!savedMsgId;
         }
       }
 
@@ -2932,7 +3237,6 @@
         setState({ user: mapUser(data.user), view: "chat" });
         await loadUserData();
         authState.loading = false;
-        await loadUserData();
       }
 
       async function doLogin() {
@@ -2948,7 +3252,6 @@
         setState({ user: mapUser(data.user), view: "chat" });
         await loadUserData();
         authState.loading = false;
-        await loadUserData();
       }
 
       async function doGuestLogin() {
@@ -2968,7 +3271,252 @@
 
       function doSkipLogin() {
         setState({ view: "chat" });
-        toast("로그인을 건너뛰었습니다", "info");
+        toast("로그인 없이 이 기기에서 계속 사용합니다.", "info");
+      }
+
+      // ── PROFILE & OPTIONAL ACCOUNT MODALS ─────────────────────────
+      function closeModalById(id) {
+        document.getElementById(id)?.remove();
+      }
+
+      const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+      const PROFILE_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
+      const PROFILE_DOCUMENT_TOTAL_MAX_BYTES = 25 * 1024 * 1024;
+      const PROFILE_DOCUMENT_MAX_COUNT = 10;
+
+      async function saveProfileAvatar(file) {
+        if (!file?.type?.startsWith("image/")) throw new Error("프로필 이미지는 이미지 파일만 사용할 수 있습니다.");
+        if (!file.size || file.size > PROFILE_IMAGE_MAX_BYTES) throw new Error("프로필 이미지는 5MB 이하만 사용할 수 있습니다.");
+        const oldAvatarId = S.user?.avatarFileId;
+        const meta = await storeFileLF(file, { profileId: S.user?.id, role: "profile-avatar" });
+        await queueSync("profileFile", { ...meta, role: "profile-avatar" });
+        const avatarPreview = await createObjUrl(meta.id);
+        if (oldAvatarId && oldAvatarId !== meta.id) {
+          await blobStore.removeItem(oldAvatarId).catch(() => {});
+          await metaStore.removeItem(oldAvatarId).catch(() => {});
+          await syncStore.removeItem(`profileFile:${oldAvatarId}`).catch(() => {});
+        }
+        return { avatarFileId: meta.id, avatarPreview: avatarPreview || "", avatar: "" };
+      }
+
+      async function addProfileDocuments(files) {
+        const existing = await getProfileDocuments();
+        const accepted = [];
+        let total = existing.reduce((sum, document) => sum + (document.size || 0), 0);
+        for (const file of Array.from(files || [])) {
+          if (existing.length + accepted.length >= PROFILE_DOCUMENT_MAX_COUNT) break;
+          if (!file.size || file.size > PROFILE_DOCUMENT_MAX_BYTES) continue;
+          if (total + file.size > PROFILE_DOCUMENT_TOTAL_MAX_BYTES) break;
+          const meta = await storeFileLF(file, { profileId: S.user?.id, role: "profile-document" });
+          await queueSync("profileFile", { ...meta, role: "profile-document" });
+          accepted.push({ id: meta.id, name: meta.name, mimeType: meta.mimeType, size: meta.size, type: meta.type, createdAt: meta.createdAt });
+          total += file.size;
+        }
+        if (!accepted.length && files?.length) throw new Error("문서는 파일당 10MB, 총 25MB, 최대 10개까지 저장할 수 있습니다.");
+        return [...existing, ...accepted];
+      }
+
+      async function removeProfileDocument(documentId) {
+        const documents = await getProfileDocuments();
+        const nextDocuments = documents.filter((document) => document.id !== documentId);
+        await blobStore.removeItem(documentId).catch(() => {});
+        await metaStore.removeItem(documentId).catch(() => {});
+        await syncStore.removeItem(`profileFile:${documentId}`).catch(() => {});
+        await updateSyncCount();
+        return nextDocuments;
+      }
+
+      function renderProfileModal() {
+        closeModalById("profile-modal");
+        const profile = S.user || {};
+        const overlay = document.createElement("div");
+        overlay.id = "profile-modal";
+        overlay.className = "modal-overlay";
+        overlay.innerHTML = `
+          <div class="modal-box" style="max-width:500px;">
+            <div class="modal-header"><div class="modal-title">프로필 편집</div><button class="modal-close" id="profile-close">${iconSvg("X", 20)}</button></div>
+            <div class="modal-body">
+              <div class="form-hint" style="margin-bottom:14px;">로그인하지 않아도 이미지와 문서를 이 기기에 즉시 저장합니다.${S.account?.connected ? " 연결된 계정에는 파일 메타데이터와 프로필 변경이 다음 동기화 때 반영됩니다." : ""}</div>
+              <div class="form-group"><label class="form-label">표시 이름</label><input class="form-input" id="profile-name" maxlength="40" value="${escHtml(profile.username || "사용자")}"></div>
+              <div class="form-group">
+                <label class="form-label">프로필 이미지 (선택)</label>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <div style="width:48px;height:48px;border-radius:50%;background:#2f2f2f;display:flex;align-items:center;justify-content:center;overflow:hidden;flex:none;">${profileAvatarSrc(profile) ? `<img src="${profileAvatarSrc(profile)}" style="width:100%;height:100%;object-fit:cover;">` : escHtml((profile.username || "?").charAt(0).toUpperCase())}</div>
+                  <input class="form-input" id="profile-image-file" type="file" accept="image/*" style="padding:8px;">
+                </div>
+                <div class="form-hint">이미지 파일은 5MB 이하이며, 이 기기에 저장됩니다.</div>
+              </div>
+              <div class="form-group"><label class="form-label">아바타 이미지 URL (선택)</label><input class="form-input" id="profile-avatar" type="url" maxlength="2048" value="${escHtml(profile.avatar || "")}" placeholder="https://..."></div>
+              <div class="form-group"><label class="form-label">소개 (선택)</label><textarea class="form-input" id="profile-bio" maxlength="280" style="min-height:90px;resize:vertical;">${escHtml(profile.bio || "")}</textarea></div>
+              <div class="form-group">
+                <label class="form-label">프로필 문서 (선택)</label>
+                <input class="form-input" id="profile-doc-files" type="file" multiple accept=".pdf,.txt,.md,.csv,.json,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.rtf" style="padding:8px;">
+                <div class="form-hint">파일당 최대 10MB, 총 25MB, 최대 10개입니다. 문서는 이 기기에 저장됩니다.</div>
+                <div id="profile-doc-list" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;">${(profile.documents || []).map((document) => `<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;background:rgba(255,255,255,.05);padding:7px 9px;border-radius:6px;font-size:12px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(document.name)} · ${fmtSize(document.size || 0)}</span><button type="button" class="profile-doc-remove" data-id="${escHtml(document.id)}" style="border:0;background:none;color:#f87171;cursor:pointer;">삭제</button></div>`).join("") || '<span class="form-hint">저장된 문서가 없습니다.</span>'}</div>
+              </div>
+              <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;"><button class="auth-btn outline" id="profile-cancel" style="width:auto;margin:0;padding:10px 14px;">취소</button><button class="auth-btn primary" id="profile-save" style="width:auto;margin:0;padding:10px 14px;">저장</button></div>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const close = () => closeModalById("profile-modal");
+        overlay.querySelector("#profile-close")?.addEventListener("click", close);
+        overlay.querySelector("#profile-cancel")?.addEventListener("click", close);
+        overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+        overlay.querySelectorAll(".profile-doc-remove").forEach((button) => {
+          button.addEventListener("click", async () => {
+            try {
+              const documents = await removeProfileDocument(button.dataset.id);
+              const saved = await saveDeviceProfile({ documents });
+              setState({ user: saved });
+              await queueSync("profile", saved);
+              renderProfileModal();
+              toast("문서를 이 기기에서 삭제했습니다.", "success");
+            } catch (error) {
+              toast(error instanceof Error ? error.message : "문서를 삭제하지 못했습니다.", "error");
+            }
+          });
+        });
+        overlay.querySelector("#profile-save")?.addEventListener("click", async () => {
+          const saveButton = overlay.querySelector("#profile-save");
+          const username = overlay.querySelector("#profile-name").value.trim();
+          const avatarUrl = overlay.querySelector("#profile-avatar").value.trim();
+          const bio = overlay.querySelector("#profile-bio").value.trim();
+          const avatarFile = overlay.querySelector("#profile-image-file").files?.[0];
+          const documentFiles = overlay.querySelector("#profile-doc-files").files;
+          if (!username) {
+            toast("표시 이름을 입력하세요.", "error");
+            return;
+          }
+          if (avatarUrl && !/^https:\/\//i.test(avatarUrl)) {
+            toast("아바타 URL은 HTTPS 주소여야 합니다.", "error");
+            return;
+          }
+          saveButton.disabled = true;
+          try {
+            const avatarChanges = avatarFile ? await saveProfileAvatar(avatarFile) : {};
+            const documents = documentFiles?.length ? await addProfileDocuments(documentFiles) : await getProfileDocuments();
+            const saved = await saveDeviceProfile({
+              username,
+              // 업로드한 파일이 있으면 로컬 파일이 외부 URL보다 우선합니다.
+              avatar: avatarFile ? "" : avatarUrl,
+              bio,
+              documents,
+              ...avatarChanges,
+            });
+            setState({ user: saved });
+            await queueSync("profile", saved);
+            if (S.account?.connected) void flushSyncQueue();
+            toast("프로필 이미지·문서를 이 기기에 저장했습니다.", "success");
+            close();
+          } catch (error) {
+            toast(error instanceof Error ? error.message : "프로필을 저장하지 못했습니다.", "error", 5000);
+          } finally {
+            saveButton.disabled = false;
+          }
+        });
+      }
+
+      async function renderAccountModal() {
+        closeModalById("account-modal");
+        const config = await getCloudConfig();
+        const overlay = document.createElement("div");
+        overlay.id = "account-modal";
+        overlay.className = "modal-overlay";
+        overlay.innerHTML = `
+          <div class="modal-box" style="max-width:540px;">
+            <div class="modal-header"><div class="modal-title">선택적 계정 연결</div><button class="modal-close" id="account-close">${iconSvg("X", 20)}</button></div>
+            <div class="modal-body">
+              <div class="form-hint" style="margin-bottom:14px;line-height:1.6;">계정 없이도 모든 기능을 사용할 수 있습니다. 계정을 연결하면 이 기기에 쌓인 대화·프로필 변경 대기열을 개인 Supabase 계정으로 동기화할 수 있습니다. Google 공급자와 이메일 가입은 연결한 Supabase 프로젝트에서 활성화되어 있어야 합니다.</div>
+              <div class="form-group"><label class="form-label">Supabase URL</label><input class="form-input" id="account-url" type="url" value="${escHtml(config.url)}" placeholder="https://project.supabase.co"></div>
+              <div class="form-group"><label class="form-label">Supabase Anon Key</label><input class="form-input" id="account-key" type="password" value="${escHtml(config.anonKey)}" placeholder="eyJ..."></div>
+              <div style="display:flex;gap:8px;margin:14px 0 12px;"><button class="auth-btn outline" id="account-google" style="flex:1;margin:0;padding:10px;">Google로 연결</button><button class="auth-btn outline" id="account-sync" style="flex:1;margin:0;padding:10px;">지금 동기화</button></div>
+              <div class="auth-divider"><span>또는 이메일 계정</span></div>
+              <div class="form-group"><label class="form-label">이메일</label><input class="form-input" id="account-email" type="email" autocomplete="email" placeholder="name@example.com"></div>
+              <div class="form-group"><label class="form-label">비밀번호</label><input class="form-input" id="account-password" type="password" autocomplete="current-password" minlength="6" placeholder="6자 이상"></div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;"><button class="auth-btn outline" id="account-signin" style="width:auto;margin:0;padding:10px 14px;">로그인</button><button class="auth-btn primary" id="account-signup" style="width:auto;margin:0;padding:10px 14px;">회원가입</button></div>
+              <div id="account-status" class="form-hint" style="margin-top:14px;min-height:20px;">${S.account?.connected ? `연결됨 · ${escHtml(S.user?.email || S.account.provider || "계정")}` : `기기 전용 모드 · 동기화 대기 ${S.syncPending || 0}건`}</div>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        const close = () => closeModalById("account-modal");
+        overlay.querySelector("#account-close")?.addEventListener("click", close);
+        overlay.addEventListener("click", (event) => { if (event.target === overlay) close(); });
+        const status = overlay.querySelector("#account-status");
+        const prepareClient = async () => {
+          const url = overlay.querySelector("#account-url").value;
+          const key = overlay.querySelector("#account-key").value;
+          await saveCloudConfig(url, key);
+          const client = await getCloudClient();
+          if (!client) throw new Error("동기화 연결을 준비하지 못했습니다.");
+          return client;
+        };
+        overlay.querySelector("#account-google")?.addEventListener("click", async () => {
+          try {
+            status.textContent = "Google 로그인 페이지로 이동합니다…";
+            const client = await prepareClient();
+            const { error } = await client.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.href } });
+            if (error) throw error;
+          } catch (error) {
+            status.textContent = error instanceof Error ? error.message : "Google 연결을 시작하지 못했습니다.";
+          }
+        });
+        overlay.querySelector("#account-signin")?.addEventListener("click", async () => {
+          try {
+            const client = await prepareClient();
+            const email = overlay.querySelector("#account-email").value.trim();
+            const password = overlay.querySelector("#account-password").value;
+            const { error } = await client.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            await refreshCloudAccount();
+            status.textContent = "계정을 연결하고 동기화했습니다.";
+            toast("계정이 연결되었습니다.", "success");
+            close();
+          } catch (error) {
+            status.textContent = error instanceof Error ? error.message : "로그인에 실패했습니다.";
+          }
+        });
+        overlay.querySelector("#account-signup")?.addEventListener("click", async () => {
+          try {
+            const client = await prepareClient();
+            const email = overlay.querySelector("#account-email").value.trim();
+            const password = overlay.querySelector("#account-password").value;
+            if (!email || password.length < 6) throw new Error("유효한 이메일과 6자 이상 비밀번호를 입력하세요.");
+            const { data, error } = await client.auth.signUp({ email, password, options: { data: { username: S.user?.username || "사용자" }, emailRedirectTo: window.location.href } });
+            if (error) throw error;
+            if (data.session) {
+              await refreshCloudAccount();
+              toast("회원가입과 계정 연결이 완료되었습니다.", "success");
+              close();
+            } else {
+              status.textContent = "확인 이메일을 보냈습니다. 메일의 링크를 연 뒤 이 페이지로 돌아오면 자동 연결됩니다.";
+            }
+          } catch (error) {
+            status.textContent = error instanceof Error ? error.message : "회원가입에 실패했습니다.";
+          }
+        });
+        overlay.querySelector("#account-sync")?.addEventListener("click", async () => {
+          try {
+            await prepareClient();
+            const profile = await refreshCloudAccount();
+            if (!profile) throw new Error("먼저 Google 또는 이메일 계정으로 로그인하세요.");
+            await flushSyncQueue();
+            status.textContent = `동기화 완료 · 남은 대기 ${S.syncPending || 0}건`;
+          } catch (error) {
+            status.textContent = error instanceof Error ? error.message : "동기화에 실패했습니다.";
+          }
+        });
+      }
+
+      async function disconnectAccount() {
+        try {
+          const client = await getCloudClient();
+          await client?.auth.signOut();
+        } catch (error) {
+          console.warn("계정 연결 해제 실패:", error);
+        }
+        const local = await saveDeviceProfile({ accountId: "", email: "", isAnonymous: true });
+        setState({ user: local, account: { connected: false, provider: "" }, dropdownOpen: false, syncStatus: "기기 전용 모드" });
+        toast("계정 연결만 해제했습니다. 이 기기의 대화와 프로필은 그대로 유지됩니다.", "info", 5000);
       }
 
       // ── MAIN LAYOUT ──────────────────────────────────────────────
@@ -3000,16 +3548,18 @@
                   🌐
                 </button>
                 <button class="user-btn" id="user-btn" title="${S.user?.username || ""}">
-                  ${S.user?.avatar ? `<img src="${S.user.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : (S.user?.username || "?").charAt(0).toUpperCase()}
+                  ${profileAvatarSrc(S.user) ? `<img src="${profileAvatarSrc(S.user)}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : (S.user?.username || "?").charAt(0).toUpperCase()}
                 </button>
                 <div class="dropdown ${S.dropdownOpen ? "open" : ""}" id="user-dropdown">
                   <div class="dropdown-header">
                     <div class="dropdown-user-name">${S.user?.username || ""}</div>
                     <div class="dropdown-user-email">${S.user?.email || ""}</div>
                   </div>
-                  <div class="dropdown-item" id="dd-queue">${iconSvg("MessageSquarePlus", 14)} 대기 메시지 전송</div>
-                  <div class="dropdown-sep"></div>
-                  <div class="dropdown-item danger" id="dd-logout">${iconSvg("LogOut", 14)} 로그아웃</div>
+                  <div class="dropdown-item" id="dd-profile">${iconSvg("User", 14)} 프로필 편집</div>
+                  <div class="dropdown-item" id="dd-account">${iconSvg("Settings", 14)} ${S.account?.connected ? "계정·동기화 관리" : "계정 연결·동기화"}</div>
+                  <div class="dropdown-item" id="dd-sync">${iconSvg("RefreshCw", 14)} ${S.syncing ? "동기화 중…" : `동기화 대기 ${S.syncPending || 0}건`}</div>
+                  <div class="dropdown-item" id="dd-local-model">${iconSvg("Bot", 14)} 로컬 GGUF 모델</div>
+                  ${S.account?.connected ? `<div class="dropdown-sep"></div><div class="dropdown-item danger" id="dd-disconnect">${iconSvg("LogOut", 14)} 계정 연결 해제</div>` : ""}
                 </div>
               </div>
             </div>
@@ -3046,7 +3596,7 @@
                     ${iconSvg("Send", 15)}
                   </button>
                 </div>
-                <div class="input-hint">이미지·PDF·텍스트 등 모든 파일 첨부 지원 · Enter로 전송, Shift+Enter로 줄바꿈</div>
+                <div class="input-hint">${S.localModel?.ready ? `로컬 모델 사용 중: ${escHtml(S.localModel.modelName || "GGUF")} · 기기에서만 추론합니다` : "이미지·PDF·텍스트 등 파일 첨부 지원 · 파일당 최대 10MB, 전체 최대 20MB"}</div>
               </div>
             </div>
           </div>
@@ -3294,6 +3844,128 @@
         setState({ attachedFiles: S.attachedFiles.filter((x) => x.id !== id) });
       }
 
+      // ── LOCAL GGUF MODEL MODAL ───────────────────────────────────
+      function formatModelSize(bytes) {
+        if (!bytes) return "";
+        return bytes < 1024 * 1024 * 1024
+          ? `${(bytes / 1024 / 1024).toFixed(1)}MB`
+          : `${(bytes / 1024 / 1024 / 1024).toFixed(2)}GB`;
+      }
+
+      function updateLocalModelHint() {
+        const hint = document.querySelector(".input-hint");
+        if (!hint) return;
+        hint.textContent = S.localModel?.ready
+          ? `로컬 모델 사용 중: ${S.localModel.modelName || "GGUF"} · 기기에서만 추론합니다`
+          : "이미지·PDF·텍스트 등 파일 첨부 지원 · 파일당 최대 10MB, 전체 최대 20MB";
+      }
+
+      function renderLocalModelModal() {
+        const old = document.getElementById("local-model-modal");
+        if (old) old.remove();
+
+        const overlay = document.createElement("div");
+        overlay.id = "local-model-modal";
+        overlay.className = "modal-overlay";
+        const status = S.localModel || {};
+        overlay.innerHTML = `
+          <div class="modal-box" style="max-width:560px;">
+            <div class="modal-header">
+              <div class="modal-title">로컬 GGUF 모델</div>
+              <button class="modal-close" id="local-model-close">${iconSvg("X", 20)}</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-hint" style="margin-bottom:14px;line-height:1.6;">
+                선택한 GGUF 파일은 브라우저의 메모리에서만 실행되며 서버로 업로드되지 않습니다. 분할 모델은 모든 조각을 함께 선택하세요. 기기 메모리·브라우저 호환성에 따라 일부 모델은 실행되지 않을 수 있습니다.
+              </div>
+              <div class="form-group">
+                <label class="form-label">GGUF 파일</label>
+                <input class="form-input" id="local-model-files" type="file" accept=".gguf,.GGUF" multiple />
+              </div>
+              <div class="form-group">
+                <label class="form-label">컨텍스트 길이</label>
+                <select class="form-input" id="local-model-context">
+                  <option value="1024">1,024 · 저메모리</option>
+                  <option value="2048" selected>2,048 · 기본</option>
+                  <option value="4096">4,096 · 더 많은 메모리 필요</option>
+                  <option value="8192">8,192 · 고사양 기기 권장</option>
+                </select>
+              </div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;cursor:pointer;">
+                <input type="checkbox" id="local-model-gpu" checked> 가능하면 WebGPU 가속 사용
+              </label>
+              <div id="local-model-status" class="form-hint" style="min-height:22px;line-height:1.5;">
+                ${status.ready ? `현재 로드됨: ${escHtml(status.modelName || "GGUF")} ${status.modelSize ? `(${formatModelSize(status.modelSize)})` : ""}` : "아직 로컬 모델이 로드되지 않았습니다."}
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;">
+                ${status.ready ? '<button class="auth-btn outline" id="local-model-unload" style="width:auto;margin:0;padding:10px 14px;">모델 해제</button>' : ""}
+                <button class="auth-btn primary" id="local-model-load" style="width:auto;margin:0;padding:10px 14px;">로컬 모델 불러오기</button>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+
+        const close = () => overlay.remove();
+        overlay.querySelector("#local-model-close")?.addEventListener("click", close);
+        overlay.addEventListener("click", (event) => {
+          if (event.target === overlay) close();
+        });
+
+        overlay.querySelector("#local-model-load")?.addEventListener("click", async () => {
+          const input = overlay.querySelector("#local-model-files");
+          const statusEl = overlay.querySelector("#local-model-status");
+          const loadButton = overlay.querySelector("#local-model-load");
+          const files = Array.from(input?.files || []);
+          const contextLength = Number(overlay.querySelector("#local-model-context")?.value || 2048);
+          const useGpu = !!overlay.querySelector("#local-model-gpu")?.checked;
+
+          if (!files.length) {
+            statusEl.textContent = "하나 이상의 GGUF 파일을 선택하세요.";
+            return;
+          }
+          if (!window.LocalGGUF) {
+            statusEl.textContent = "로컬 모델 런타임을 아직 준비하지 못했습니다. 잠시 후 다시 시도하세요.";
+            return;
+          }
+
+          loadButton.disabled = true;
+          setState({ localModel: { ...S.localModel, loading: true } });
+          try {
+            const modelStatus = await window.LocalGGUF.load(files, {
+              contextLength,
+              useGpu,
+              onProgress: (message) => {
+                statusEl.textContent = message;
+              },
+            });
+            setState({ localModel: modelStatus });
+            updateLocalModelHint();
+            toast(`로컬 모델을 준비했습니다: ${modelStatus.modelName}`, "success");
+            close();
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "GGUF 모델을 불러오지 못했습니다.";
+            statusEl.textContent = message;
+            toast(message, "error", 6000);
+            setState({ localModel: window.LocalGGUF.getStatus() });
+          } finally {
+            loadButton.disabled = false;
+          }
+        });
+
+        overlay.querySelector("#local-model-unload")?.addEventListener("click", async () => {
+          const statusEl = overlay.querySelector("#local-model-status");
+          try {
+            await window.LocalGGUF?.unload();
+            setState({ localModel: window.LocalGGUF?.getStatus() || { ready: false, modelFiles: 0 } });
+            updateLocalModelHint();
+            toast("로컬 모델 메모리를 해제했습니다.", "success");
+            close();
+          } catch (error) {
+            statusEl.textContent = error instanceof Error ? error.message : "모델 해제에 실패했습니다.";
+          }
+        });
+      }
+
       // ── GPT MODAL ────────────────────────────────────────────────
       let gptModalFiles = []; // runtime pending files for modal display
 
@@ -3533,17 +4205,30 @@
           e.stopPropagation();
           setState({ dropdownOpen: !S.dropdownOpen });
         });
-        document.addEventListener(
-          "click",
-          () => {
-            if (S.dropdownOpen) setState({ dropdownOpen: false });
-          },
-          { once: true },
-        );
-        document.getElementById("dd-logout")?.addEventListener("click", doLogout);
-        document.getElementById("dd-queue")?.addEventListener("click", () => {
+        document.addEventListener("click", () => {
+          if (S.dropdownOpen) setState({ dropdownOpen: false });
+        });
+        document.getElementById("dd-profile")?.addEventListener("click", () => {
           setState({ dropdownOpen: false });
-          toast("오프라인 큐 처리 완료", "info");
+          renderProfileModal();
+        });
+        document.getElementById("dd-account")?.addEventListener("click", () => {
+          setState({ dropdownOpen: false });
+          void renderAccountModal();
+        });
+        document.getElementById("dd-sync")?.addEventListener("click", async () => {
+          setState({ dropdownOpen: false });
+          if (!S.account?.connected) {
+            toast("계정 연결 전에도 모든 데이터는 이 기기에 저장됩니다. 계정을 연결하면 다른 기기와 동기화할 수 있습니다.", "info", 5000);
+            return;
+          }
+          const ok = await flushSyncQueue();
+          toast(ok ? "동기화를 완료했습니다." : "동기화 대기 항목이 남아 있습니다.", ok ? "success" : "info");
+        });
+        document.getElementById("dd-disconnect")?.addEventListener("click", disconnectAccount);
+        document.getElementById("dd-local-model")?.addEventListener("click", () => {
+          setState({ dropdownOpen: false });
+          renderLocalModelModal();
         });
 
         // File attach
@@ -3552,12 +4237,37 @@
           ?.addEventListener("click", () => document.getElementById("file-input").click());
         document.getElementById("file-input")?.addEventListener("change", (e) => {
           const files = Array.from(e.target.files || []);
-          const newFiles = files.map((f) => ({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            file: f,
-            previewUrl: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
+          const maxFileCount = 10;
+          const maxFileBytes = 10 * 1024 * 1024;
+          const maxTotalBytes = 20 * 1024 * 1024;
+          const available = Math.max(0, maxFileCount - S.attachedFiles.length);
+          let totalBytes = S.attachedFiles.reduce((sum, item) => sum + item.file.size, 0);
+          const accepted = [];
+
+          for (const file of files.slice(0, available)) {
+            if (!file.size) {
+              toast(`빈 파일은 첨부할 수 없습니다: ${file.name}`, "error");
+              continue;
+            }
+            if (file.size > maxFileBytes) {
+              toast(`파일당 최대 10MB까지 첨부할 수 있습니다: ${file.name}`, "error");
+              continue;
+            }
+            if (totalBytes + file.size > maxTotalBytes) {
+              toast("전체 첨부 크기는 20MB까지입니다.", "error");
+              break;
+            }
+            accepted.push(file);
+            totalBytes += file.size;
+          }
+          if (files.length > available) toast("파일은 최대 10개까지 첨부할 수 있습니다.", "info");
+
+          const newFiles = accepted.map((file) => ({
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            file,
+            previewUrl: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined,
           }));
-          setState({ attachedFiles: [...S.attachedFiles, ...newFiles] });
+          if (newFiles.length) setState({ attachedFiles: [...S.attachedFiles, ...newFiles] });
           if (e.target) e.target.value = "";
         });
 
@@ -3568,9 +4278,10 @@
         const ta = document.getElementById("msg-input");
         if (ta) {
           ta.addEventListener("keydown", (e) => {
+            if (e.isComposing) return;
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              doSend();
+              void doSend();
             }
           });
           ta.addEventListener("input", (e) => {
@@ -3586,19 +4297,23 @@
         });
       }
 
-      function doSend() {
+      async function doSend() {
         const ta = document.getElementById("msg-input");
         const content = ta?.value || "";
-        const files = S.attachedFiles.map((f) => f.file);
-        // Revoke preview URLs
-        S.attachedFiles.forEach((f) => {
-          if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+        const files = S.attachedFiles.map((file) => file.file);
+        if (!content.trim() && files.length === 0) return;
+
+        const sent = await sendMessage(content, files);
+        if (!sent) return;
+
+        S.attachedFiles.forEach((file) => {
+          if (file.previewUrl) URL.revokeObjectURL(file.previewUrl);
         });
-        if (ta) ta.value = "";
+        setState({ attachedFiles: [] });
         if (ta) {
+          ta.value = "";
           ta.style.height = "auto";
         }
-        sendMessage(content, files);
       }
 
       // ═══════════════════════════════════════════════════════════════
@@ -3636,6 +4351,7 @@
         updateMessages();
         updateHeader();
         updateFilePreviews();
+        updateLocalModelHint();
         updateGPTBanner();
         updateSidebarDrawer();
         if (S.gptBuilderOpen && !document.getElementById("gpt-modal")?.classList.contains("hidden") === false)
@@ -3698,11 +4414,12 @@
       // 🌐  ONLINE / OFFLINE
       // ═══════════════════════════════════════════════════════════════
       window.addEventListener("online", () => {
-        setState({ isOnline: true });
-        toast("인터넷에 연결되었습니다", "success");
+        setState({ isOnline: true, syncStatus: "연결 복구됨" });
+        void flushSyncQueue();
+        toast("인터넷에 연결되었습니다. 저장된 변경사항을 확인합니다.", "success");
       });
       window.addEventListener("offline", () => {
-        setState({ isOnline: false });
+        setState({ isOnline: false, syncStatus: "오프라인 · 기기에 저장 중" });
         toast("오프라인 상태입니다", "error");
       });
 
@@ -3830,7 +4547,7 @@
       // PWA Service Worker
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").catch(() => {});
+          navigator.serviceWorker.register("./sw.js").catch(() => {});
         });
       }
     </script>
