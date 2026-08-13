@@ -26,6 +26,10 @@ import {
 import { ChatFileAttachment } from '@/types';
 import { toast } from 'sonner';
 
+function getErrorMessage(error: unknown): string | undefined {
+  return error instanceof Error ? error.message : undefined;
+}
+
 export function ChatPage() {
   const { user } = useAuth();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -117,7 +121,7 @@ export function ChatPage() {
             }
           } else {
             // 인증 유저: Supabase Storage 업로드 → signed URL
-            const safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, '_');
+            const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
             const path = `${userId}/chat/${Date.now()}_${safeName}`;
             const { data, error } = await supabase.storage
               .from('chat-files')
@@ -139,15 +143,30 @@ export function ChatPage() {
               continue;
             }
 
-            const { data: signed } = await supabase.storage
+            const { data: signed, error: signedUrlError } = await supabase.storage
               .from('chat-files')
               .createSignedUrl(data.path, 3600);
+
+            if (signedUrlError || !signed?.signedUrl) {
+              console.warn('이미지 접근 URL 생성 실패. 로컬 데이터로 전송합니다:', signedUrlError);
+              const blob = await getFileBlob(localId);
+              if (blob) {
+                const base64 = await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = (event) => resolve(event.target?.result as string);
+                  reader.onerror = reject;
+                  reader.readAsDataURL(blob);
+                });
+                attachments.push({ name: file.name, mimeType: file.type, type: 'image', base64, localId });
+              }
+              continue;
+            }
 
             attachments.push({
               name: file.name,
               mimeType: file.type,
               type: 'image',
-              url: signed?.signedUrl,
+              url: signed.signedUrl,
               localId,
             });
           }
@@ -174,24 +193,27 @@ export function ChatPage() {
   };
 
   // ── 메시지 전송 ─────────────────────────────────────────────
-  const handleSend = async (content: string, attachedFiles: File[] = []) => {
+  const handleSend = async (content: string, attachedFiles: File[] = []): Promise<boolean> => {
     if (!user) {
       toast.error('게스트 모드로 먼저 시작하세요');
-      return;
+      return false;
     }
-    if (!content.trim() && attachedFiles.length === 0) return;
+    if (!content.trim() && attachedFiles.length === 0) return false;
 
     const isGuest = user.isGuest === true;
 
     // 오프라인 큐
     if (!isOnline) {
       if (!isGuest && currentConversationId && attachedFiles.length === 0) {
-        messageQueue.addToQueue(currentConversationId, content);
-        toast.info('메시지가 큐에 추가되었습니다. 온라인 상태가 되면 자동 전송됩니다.');
-      } else {
-        toast.error('오프라인에서는 파일 첨부 메시지를 전송할 수 없습니다');
+        const queuedMessageId = messageQueue.addToQueue(currentConversationId, content);
+        if (queuedMessageId) {
+          toast.info('메시지가 큐에 추가되었습니다. 온라인 상태가 되면 자동 전송됩니다.');
+          return true;
+        }
+        return false;
       }
-      return;
+      toast.error('오프라인에서는 파일 첨부 메시지를 전송할 수 없습니다');
+      return false;
     }
 
     let conversationId = currentConversationId;
@@ -393,7 +415,8 @@ export function ChatPage() {
 
       setStreamingMessage('');
       setIsStreaming(false);
-    } catch (error: any) {
+      return true;
+    } catch (error: unknown) {
       console.error('메시지 전송 실패:', error);
       setIsStreaming(false);
       setStreamingMessage('');
@@ -402,18 +425,20 @@ export function ChatPage() {
       if (!savedUserMsgId) {
         useChatStore
           .getState()
-          .setMessages(useChatStore.getState().messages.filter((m) => m.id !== tempId));
+          .setMessages(useChatStore.getState().messages.filter((message) => message.id !== tempId));
       }
 
-      let msg = '메시지 전송에 실패했습니다';
-      if (error?.message?.includes('AI')) msg = error.message;
-      else if (error?.message?.includes('네트워크') || error?.message?.includes('network'))
-        msg = '네트워크 연결을 확인해주세요';
-      else if (error?.message?.includes('인증') || error?.message?.includes('auth'))
-        msg = '인증에 실패했습니다. 다시 로그인해주세요';
-      else if (error?.message) msg = error.message;
+      const errorMessage = getErrorMessage(error);
+      let message = '메시지 전송에 실패했습니다';
+      if (errorMessage?.includes('AI')) message = errorMessage;
+      else if (errorMessage?.includes('네트워크') || errorMessage?.includes('network'))
+        message = '네트워크 연결을 확인해주세요';
+      else if (errorMessage?.includes('인증') || errorMessage?.includes('auth'))
+        message = '인증에 실패했습니다. 다시 로그인해주세요';
+      else if (errorMessage) message = errorMessage;
 
-      toast.error(msg);
+      toast.error(message);
+      return false;
     }
   };
 
